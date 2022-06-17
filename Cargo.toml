@@ -1,0 +1,15 @@
+[package]
+name = "parsley"
+version = "0.1.0"
+edition = "2021"
+authors = ["Noah Shanaberger <noah@thenoah.party>"]
+description = "My attempt at a Rust parsing and lexing library."
+license-file = "LICENSE"
+homepage = "https://github.com/32Bites/parsley-rs/"
+repository = "https://github.com/32Bites/parsley-rs/"
+readme = "README.md"
+publish = ["parsley-rs"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
