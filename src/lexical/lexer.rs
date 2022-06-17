@@ -6,7 +6,6 @@ use super::{
 /// Alias for closures that return a new Token.
 pub type LexerNewTokenFn = fn() -> Option<Box<dyn AnyToken>>;
 
-
 /// Makes building a new token function list easier.
 pub struct NewTokenBuilder {
     pub functions: Vec<LexerNewTokenFn>,
@@ -39,7 +38,6 @@ impl NewTokenBuilder {
         self.functions
     }
 }
-
 
 /// Performs basic lexical analysis.
 pub struct Lexer {
@@ -85,15 +83,16 @@ impl Lexer {
                     if let Some(old_token) = current_token.replace(token) {
                         return Ok(Some(old_token));
                     } else {
-                        return Ok(None)
+                        return Ok(None);
                     }
                 }
             }
         }
 
-        Err(LexCharacterError::Other(
-            format!("Failed to find a token type that will accept the current character: '{}'", character),
-        ))
+        Err(LexCharacterError::Other(format!(
+            "Failed to find a token type that will accept the current character: '{}'",
+            character
+        )))
     }
 
     /// Tokenize the current input, and return an error if there is a failure.
@@ -112,7 +111,7 @@ impl Lexer {
                 );
                 old_token = match old {
                     Ok(old) => old,
-                    Err(error) => return Err(error)
+                    Err(error) => return Err(error),
                 };
             } else if let Some(ref mut current_token) = self.current_token {
                 if let Err(error) = current_token.lex(index, character, next_character) {
@@ -127,7 +126,7 @@ impl Lexer {
                             );
                             old_token = match old {
                                 Ok(old) => old,
-                                Err(error) => return Err(error)
+                                Err(error) => return Err(error),
                             };
                         }
                     } else {
@@ -145,7 +144,9 @@ impl Lexer {
             if current_token.is_done() {
                 self.tokens.push(current_token);
             } else {
-                return Err(LexCharacterError::Other("Failed when lexing the final token, it is unfinished.".into()))
+                return Err(LexCharacterError::Other(
+                    "Failed when lexing the final token, it is unfinished.".into(),
+                ));
             }
         }
 

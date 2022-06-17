@@ -2,7 +2,7 @@ use std::any::Any;
 
 use super::{error::LexCharacterError, lexer::LexerNewTokenFn};
 
-/// A type alias for use in the TokenType trait. 
+/// A type alias for use in the TokenType trait.
 /// It represents the lex function in a Token, or what is run when attempting to lex a character.
 pub type TokenLexFn<TokType> = fn(
     internal_value: &mut String,
@@ -12,12 +12,12 @@ pub type TokenLexFn<TokType> = fn(
     next_character: Option<char>,
 ) -> Result<(), LexCharacterError>;
 
-
 /// A type alias for use in the TokenType trait.
 /// It represents the function that is called on the final Token that was lexed.
 /// It's purpose is to determin whether the final token has finished lexing, however
 /// if this functionality is not needed, it should return None.
-pub type TokenIsDoneFn<TokType> = fn(internal_value: &String, value_store: &TokType) -> Option<bool>;
+pub type TokenIsDoneFn<TokType> =
+    fn(internal_value: &String, value_store: &TokType) -> Option<bool>;
 
 /// Used to declare what kind of token a Token struct is, as well as serving as a value store
 /// for more complicated token types.
@@ -41,7 +41,7 @@ pub struct Token<TokType: TokenType> {
     internal_value: String,
     value_store: TokType,
     lex_func: TokenLexFn<TokType>,
-    is_done_func: TokenIsDoneFn<TokType>
+    is_done_func: TokenIsDoneFn<TokType>,
 }
 
 impl<TokType: TokenType> Token<TokType> {
@@ -51,7 +51,7 @@ impl<TokType: TokenType> Token<TokType> {
             internal_value: "".into(),
             value_store: value_store,
             lex_func: TokType::lex_func(),
-            is_done_func: TokType::is_done_func()
+            is_done_func: TokType::is_done_func(),
         }
     }
     /// Returns the value store name string.

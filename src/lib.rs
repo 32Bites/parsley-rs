@@ -3,10 +3,13 @@ pub mod lexical;
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexical::{
-        error::LexCharacterError,
-        {Lexer, LexerNewTokenFn, NewTokenBuilder, ToAnyToken, Token, TokenType},
-    }, empty_create};
+    use crate::{
+        empty_create,
+        lexical::{
+            error::LexCharacterError,
+            {Lexer, LexerNewTokenFn, NewTokenBuilder, ToAnyToken, TokenType},
+        },
+    };
 
     #[test]
     fn test_lexer_creation() {
@@ -45,7 +48,7 @@ mod tests {
             Addition,
             Subtraction,
             OpeningParan,
-            ClosingParan
+            ClosingParan,
         }
 
         #[derive(Debug, Clone)]
