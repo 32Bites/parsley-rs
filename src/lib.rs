@@ -13,12 +13,6 @@ mod tests {
         #[derive(Debug, Clone)]
         struct NumberToken;
 
-        impl ToString for NumberToken {
-            fn to_string(&self) -> String {
-                "Number_Token".into()
-            }
-        }
-
         impl TokenType for NumberToken {
             fn new() -> Self {
                 Self {}
@@ -52,12 +46,6 @@ mod tests {
 
         #[derive(Debug, Clone)]
         struct OperationToken(Operation);
-
-        impl ToString for OperationToken {
-            fn to_string(&self) -> String {
-                "Operation_Token".into()
-            }
-        }
 
         impl TokenType for OperationToken {
             fn new() -> Self {
