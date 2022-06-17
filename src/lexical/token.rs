@@ -12,11 +12,22 @@ pub type TokenLexFn<TokType> = fn(
     next_character: Option<char>,
 ) -> Result<(), LexCharacterError>;
 
+
+/// A type alias for use in the TokenType trait.
+/// It represents the function that is called on the final Token that was lexed.
+/// It's purpose is to determin whether the final token has finished lexing, however
+/// if this functionality is not needed, it should return None.
+pub type TokenIsDoneFn<TokType> = fn(internal_value: &String, value_store: &TokType) -> Option<bool>;
+
 /// Used to declare what kind of token a Token struct is, as well as serving as a value store
 /// for more complicated token types.
 pub trait TokenType: std::fmt::Debug + Clone {
     /// Returns the closure that is used for lexing a character.
-    fn lex_func(&self) -> TokenLexFn<Self>;
+    fn lex_func() -> TokenLexFn<Self>;
+    /// Returns a closure that is used to check whether the token is done lexing.
+    /// If None is returned, the Lexer will just ignore the function call entirely.
+    /// The closure is called if the token is the last to be handled.
+    fn is_done_func() -> TokenIsDoneFn<Self>;
     /// Returns a closure that can be used to create a new Token;
     fn create() -> LexerNewTokenFn;
     /// Creates a new `TokenType`.
@@ -30,6 +41,7 @@ pub struct Token<TokType: TokenType> {
     internal_value: String,
     value_store: TokType,
     lex_func: TokenLexFn<TokType>,
+    is_done_func: TokenIsDoneFn<TokType>
 }
 
 impl<TokType: TokenType> Token<TokType> {
@@ -37,14 +49,22 @@ impl<TokType: TokenType> Token<TokType> {
     pub fn new(value_store: TokType) -> Self {
         Self {
             internal_value: "".into(),
-            value_store: value_store.clone(),
-            lex_func: value_store.lex_func(),
+            value_store: value_store,
+            lex_func: TokType::lex_func(),
+            is_done_func: TokType::is_done_func()
         }
     }
     /// Returns the value store name string.
     /// For internal use only.
     fn value_store_string(&self) -> String {
         format!("{:?}", self.value_store)
+    }
+
+    /// For functions that need to inform the lexer whether they are finished parsing.
+    /// This is useful for parsing tokens that must end with a character, or set of characters.
+    /// Returns None if the potential result in the Option is to be ignored.
+    fn is_done(&self) -> Option<bool> {
+        (self.is_done_func)(&self.internal_value, &self.value_store)
     }
 
     /// Lexes the current character (`character`) at `index` to attempt to perform analysis.
@@ -98,7 +118,7 @@ impl GetToken for dyn AnyToken {
 /// Used to represent all kinds of Tokens, as a "workaround" to Rusts' lack of type inheritance.
 pub trait AnyToken: Any + std::fmt::Display {
     /// Lex the current token.
-    /// For internal use.
+    /// For internal use only.
     fn lex(
         &mut self,
         index: usize,
@@ -106,6 +126,7 @@ pub trait AnyToken: Any + std::fmt::Display {
         next_character: Option<char>,
     ) -> Result<(), LexCharacterError>;
     fn value_store(&self) -> String;
+    fn is_done(&self) -> bool;
 
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -114,6 +135,10 @@ pub trait AnyToken: Any + std::fmt::Display {
 impl<TokType: TokenType + 'static> AnyToken for Token<TokType> {
     fn value_store(&self) -> String {
         self.value_store_string()
+    }
+
+    fn is_done(&self) -> bool {
+        self.is_done().unwrap_or(true)
     }
 
     fn lex(

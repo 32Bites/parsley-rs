@@ -3,10 +3,10 @@ pub mod lexical;
 
 #[cfg(test)]
 mod tests {
-    use crate::lexical::{
+    use crate::{lexical::{
         error::LexCharacterError,
         {Lexer, LexerNewTokenFn, NewTokenBuilder, ToAnyToken, Token, TokenType},
-    };
+    }, empty_create};
 
     #[test]
     fn test_lexer_creation() {
@@ -18,7 +18,11 @@ mod tests {
                 Self {}
             }
 
-            fn lex_func(&self) -> crate::lexical::TokenLexFn<Self> {
+            fn is_done_func() -> crate::lexical::TokenIsDoneFn<Self> {
+                |_, _| None
+            }
+
+            fn lex_func() -> crate::lexical::TokenLexFn<Self> {
                 |internal_value, _value_store, _index, character, _next_character| {
                     if matches!(character, '0'..='9') {
                         internal_value.push(character)
@@ -32,7 +36,7 @@ mod tests {
             }
 
             fn create() -> LexerNewTokenFn {
-                || Some(Token::<Self>::new(Self::new()).any_token())
+                empty_create!()
             }
         }
 
@@ -52,7 +56,11 @@ mod tests {
                 Self(Operation::Addition)
             }
 
-            fn lex_func(&self) -> crate::lexical::TokenLexFn<Self> {
+            fn is_done_func() -> crate::lexical::TokenIsDoneFn<Self> {
+                |_, _| None
+            }
+
+            fn lex_func() -> crate::lexical::TokenLexFn<Self> {
                 |internal_value, value_store, _index, character, _next_character| {
                     if internal_value.len() == 1 || !matches!(character, '+' | '-' | '(' | ')') {
                         return Err(LexCharacterError::StartNewToken {
@@ -75,7 +83,7 @@ mod tests {
             }
 
             fn create() -> LexerNewTokenFn {
-                || Some(Token::<Self>::new(Self::new()).any_token())
+                empty_create!()
             }
         }
 

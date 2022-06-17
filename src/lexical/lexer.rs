@@ -142,7 +142,11 @@ impl Lexer {
         }
 
         if let Some(current_token) = self.current_token.take() {
-            self.tokens.push(current_token);
+            if current_token.is_done() {
+                self.tokens.push(current_token);
+            } else {
+                return Err(LexCharacterError::Other("Failed when lexing the final token, it is unfinished.".into()))
+            }
         }
 
         Ok(())
