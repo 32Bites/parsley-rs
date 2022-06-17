@@ -9,6 +9,7 @@ homepage = "https://github.com/32Bites/parsley-rs/"
 repository = "https://github.com/32Bites/parsley-rs/"
 readme = "README.md"
 publish = ["parsley-rs"]
+keywords = ["lexer", "parser", "lexing", "parsing", "analysis"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
