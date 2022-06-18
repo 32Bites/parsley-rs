@@ -1,7 +1,6 @@
-use super::{
-    error::LexCharacterError,
-    token::{AnyToken, TokenType},
-};
+use crate::parsing::{SharedTreeBuilderPatternList, TreeBuilder};
+
+use super::{error::LexCharacterError, token::AnyToken, TokenTypeFunctionality};
 
 /// Alias for closures that return a new Token.
 pub type LexerNewTokenFn = fn() -> Option<Box<dyn AnyToken>>;
@@ -18,17 +17,17 @@ impl NewTokenBuilder {
     }
 
     /// Create a new NewTokenBuilder with the first type `T`.
-    pub fn create<T: TokenType>() -> Self {
+    pub fn create<T: TokenTypeFunctionality>() -> Self {
         Self::new().add_consume::<T>()
     }
 
     /// Add type `T`'s new token function.
-    pub fn add<T: TokenType>(&mut self) {
+    pub fn add<T: TokenTypeFunctionality>(&mut self) {
         self.functions.push(T::create());
     }
 
     /// Add type `T`'s new token function, and return self.
-    pub fn add_consume<T: TokenType>(mut self) -> Self {
+    pub fn add_consume<T: TokenTypeFunctionality>(mut self) -> Self {
         self.add::<T>();
         self
     }
@@ -42,7 +41,7 @@ impl NewTokenBuilder {
 /// Performs basic lexical analysis.
 pub struct Lexer {
     input: String,
-    pub tokens: Vec<Box<dyn AnyToken>>,
+    tokens: Vec<Box<dyn AnyToken>>,
     current_token: Option<Box<dyn AnyToken>>,
     new_token_functions: Vec<LexerNewTokenFn>,
 }
@@ -58,6 +57,21 @@ impl Lexer {
             input,
             new_token_functions,
         }
+    }
+
+    /// Returns an immutable reference to the tokens.
+    pub fn tokens(&self) -> &Vec<Box<dyn AnyToken>> {
+        &self.tokens
+    }
+
+    /// Returns a mutable reference to the tokens.
+    pub fn tokens_mut(&mut self) -> &mut Vec<Box<dyn AnyToken>> {
+        &mut self.tokens
+    }
+
+    /// Consumes self and returns the token list.
+    pub fn take_tokens(self) -> Vec<Box<dyn AnyToken>> {
+        self.tokens
     }
 
     /// Return a copy of the character following the provided index, if it exists.
@@ -114,24 +128,38 @@ impl Lexer {
                     Err(error) => return Err(error),
                 };
             } else if let Some(ref mut current_token) = self.current_token {
-                if let Err(error) = current_token.lex(index, character, next_character) {
-                    if let LexCharacterError::StartNewToken { reuse_character } = error {
-                        if reuse_character {
-                            let old = Self::new_token(
-                                &mut self.current_token,
-                                &self.new_token_functions,
-                                next_character,
-                                index,
-                                character,
-                            );
-                            old_token = match old {
-                                Ok(old) => old,
-                                Err(error) => return Err(error),
-                            };
+                if !current_token.is_done() {
+                    if let Err(error) = current_token.lex(index, character, next_character) {
+                        if let LexCharacterError::StartNewToken { reuse_character } = error {
+                            if reuse_character {
+                                let old = Self::new_token(
+                                    &mut self.current_token,
+                                    &self.new_token_functions,
+                                    next_character,
+                                    index,
+                                    character,
+                                );
+                                old_token = match old {
+                                    Ok(old) => old,
+                                    Err(error) => return Err(error),
+                                };
+                            }
+                        } else {
+                            return Err(error);
                         }
-                    } else {
-                        return Err(error);
                     }
+                } else {
+                    let old = Self::new_token(
+                        &mut self.current_token,
+                        &self.new_token_functions,
+                        next_character,
+                        index,
+                        character,
+                    );
+                    old_token = match old {
+                        Ok(old) => old,
+                        Err(error) => return Err(error),
+                    };
                 }
             }
 
@@ -151,5 +179,10 @@ impl Lexer {
         }
 
         Ok(())
+    }
+
+    /// Consumes self and creates a TreeBuilder for working attempting to parse an AST.
+    pub fn tree_builder(self, allowed_patterns: SharedTreeBuilderPatternList) -> TreeBuilder {
+        TreeBuilder::new(self, allowed_patterns)
     }
 }

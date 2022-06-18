@@ -19,9 +19,15 @@ pub type TokenLexFn<TokType> = fn(
 pub type TokenIsDoneFn<TokType> =
     fn(internal_value: &String, value_store: &TokType) -> Option<bool>;
 
+/// Used as a workaround so that we can have unsized value stores.
+/// It is implemented on all types that implement TokenTypeFunctionality!
+pub trait TokenType {}
+
+impl<T: TokenTypeFunctionality> TokenType for T {}
+
 /// Used to declare what kind of token a Token struct is, as well as serving as a value store
 /// for more complicated token types.
-pub trait TokenType: std::fmt::Debug + Clone {
+pub trait TokenTypeFunctionality: Clone + std::fmt::Debug + TokenType {
     /// Returns the closure that is used for lexing a character.
     fn lex_func() -> TokenLexFn<Self>;
     /// Returns a closure that is used to check whether the token is done lexing.
@@ -34,6 +40,8 @@ pub trait TokenType: std::fmt::Debug + Clone {
     fn new() -> Self;
 }
 
+// impl<T: TokenType + Clone> TokenTypeFunctionality for T {}
+
 /// Used to represent a generalized token.
 /// All tokens are a Token, but their behavior is defined by the provided `TokType`.
 /// `TokType` is a TokenType that the token receives behavior from.
@@ -44,7 +52,7 @@ pub struct Token<TokType: TokenType> {
     is_done_func: TokenIsDoneFn<TokType>,
 }
 
-impl<TokType: TokenType> Token<TokType> {
+impl<TokType: TokenTypeFunctionality> Token<TokType> {
     /// Creates a new Token that conforms to the TokenType `TokType`.
     pub fn new(value_store: TokType) -> Self {
         Self {
@@ -58,6 +66,11 @@ impl<TokType: TokenType> Token<TokType> {
     /// For internal use only.
     fn value_store_string(&self) -> String {
         format!("{:?}", self.value_store)
+    }
+
+    /// Returns the value store.
+    fn value_store(&self) -> &dyn TokenType {
+        &self.value_store
     }
 
     /// For functions that need to inform the lexer whether they are finished parsing.
@@ -86,7 +99,7 @@ impl<TokType: TokenType> Token<TokType> {
     }
 }
 
-impl<TokType: TokenType> std::fmt::Display for Token<TokType> {
+impl<TokType: TokenTypeFunctionality> std::fmt::Display for Token<TokType> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -125,16 +138,21 @@ pub trait AnyToken: Any + std::fmt::Display {
         character: char,
         next_character: Option<char>,
     ) -> Result<(), LexCharacterError>;
-    fn value_store(&self) -> String;
+    fn value_store_string(&self) -> String;
+    fn value_store(&self) -> &dyn TokenType;
     fn is_done(&self) -> bool;
 
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-impl<TokType: TokenType + 'static> AnyToken for Token<TokType> {
-    fn value_store(&self) -> String {
+impl<TokType: TokenTypeFunctionality + 'static> AnyToken for Token<TokType> {
+    fn value_store_string(&self) -> String {
         self.value_store_string()
+    }
+
+    fn value_store(&self) -> &dyn TokenType {
+        self.value_store()
     }
 
     fn is_done(&self) -> bool {
