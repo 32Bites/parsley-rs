@@ -1,5 +1,3 @@
-use std::any::Any;
-
 /// Module that stores types and methods for lexical analysis.
 pub mod lexical;
 // Module that stores types and methods for parsing.

@@ -1,6 +1,6 @@
 [package]
 name = "parsley-rs"
-version = "0.0.3"
+version = "0.0.2"
 edition = "2021"
 authors = ["Noah Shanaberger <noah@thenoah.party>"]
 description = "My attempt at a Rust parsing and lexing library."

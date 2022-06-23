@@ -121,6 +121,7 @@ impl<T: Any> Node<T> {
     }
 
     // UNFINISHED
+    #[allow(dead_code)]
     fn iter(self) -> NodeIter {
         NodeIter {
             node: Rc::new(RefCell::new(self)),
