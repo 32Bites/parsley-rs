@@ -1,190 +1,208 @@
-use std::any::Any;
+use std::{any::Any, cell::RefCell, collections::VecDeque, rc::Rc};
 
-use super::{error::LexCharacterError, lexer::LexerNewTokenFn};
+use super::error::LexError;
 
-/// A type alias for use in the TokenType trait.
-/// It represents the lex function in a Token, or what is run when attempting to lex a character.
-pub type TokenLexFn<TokType> = fn(
-    internal_value: &mut String,
-    value_store: &mut TokType,
-    index: usize,
-    character: char,
-    next_character: Option<char>,
-) -> Result<(), LexCharacterError>;
-
-/// A type alias for use in the TokenType trait.
-/// It represents the function that is called on the final Token that was lexed.
-/// It's purpose is to determin whether the final token has finished lexing, however
-/// if this functionality is not needed, it should return None.
-pub type TokenIsDoneFn<TokType> =
-    fn(internal_value: &String, value_store: &TokType) -> Option<bool>;
-
-/// Used as a workaround so that we can have unsized value stores.
-/// It is implemented on all types that implement TokenTypeFunctionality!
-pub trait TokenType {}
-
-impl<T: TokenTypeFunctionality> TokenType for T {}
-
-/// Used to declare what kind of token a Token struct is, as well as serving as a value store
-/// for more complicated token types.
-pub trait TokenTypeFunctionality: Clone + std::fmt::Debug + TokenType {
-    /// Returns the closure that is used for lexing a character.
-    fn lex_func() -> TokenLexFn<Self>;
-    /// Returns a closure that is used to check whether the token is done lexing.
-    /// If None is returned, the Lexer will just ignore the function call entirely.
-    /// The closure is called if the token is the last to be handled.
-    fn is_done_func() -> TokenIsDoneFn<Self>;
-    /// Returns a closure that can be used to create a new Token;
-    fn create() -> LexerNewTokenFn;
-    /// Creates a new `TokenType`.
-    fn new() -> Self;
-}
-
-// impl<T: TokenType + Clone> TokenTypeFunctionality for T {}
-
-/// Used to represent a generalized token.
-/// All tokens are a Token, but their behavior is defined by the provided `TokType`.
-/// `TokType` is a TokenType that the token receives behavior from.
-pub struct Token<TokType: TokenType> {
-    internal_value: String,
-    value_store: TokType,
-    lex_func: TokenLexFn<TokType>,
-    is_done_func: TokenIsDoneFn<TokType>,
-}
-
-impl<TokType: TokenTypeFunctionality> Token<TokType> {
-    /// Creates a new Token that conforms to the TokenType `TokType`.
-    pub fn new(value_store: TokType) -> Self {
-        Self {
-            internal_value: "".into(),
-            value_store: value_store,
-            lex_func: TokType::lex_func(),
-            is_done_func: TokType::is_done_func(),
-        }
-    }
-    /// Returns the value store name string.
-    /// For internal use only.
-    fn value_store_string(&self) -> String {
-        format!("{:?}", self.value_store)
+/// Describes a kind of token.
+pub trait TokenValue: Sized + std::fmt::Debug + 'static + Clone {
+    /// Creates a new Self, if the index and character are valid.
+    fn new(index: usize, character: char) -> Result<Self, LexError>;
+    /// Creates a new token with a token type of Self, and returns a shared reference to it if successful.
+    fn create_token(index: usize, character: char) -> Result<Rc<RefCell<dyn AnyToken>>, LexError> {
+        let value_store = Self::new(index, character)?;
+        Ok(Token::new(value_store).shared())
     }
 
-    /// Returns the value store.
-    fn value_store(&self) -> &dyn TokenType {
-        &self.value_store
-    }
+    /// Returns the name of the token kind.
+    fn token_name(&self) -> String;
 
-    /// For functions that need to inform the lexer whether they are finished parsing.
-    /// This is useful for parsing tokens that must end with a character, or set of characters.
-    /// Returns None if the potential result in the Option is to be ignored.
-    fn is_done(&self) -> Option<bool> {
-        (self.is_done_func)(&self.internal_value, &self.value_store)
-    }
-
-    /// Lexes the current character (`character`) at `index` to attempt to perform analysis.
-    /// May use `next_character` for a lookahead.
-    /// For internal use only.
-    pub(crate) fn lex(
-        &mut self,
-        index: usize,
-        character: char,
-        next_character: Option<char>,
-    ) -> Result<(), LexCharacterError> {
-        (self.lex_func)(
-            &mut self.internal_value,
-            &mut self.value_store,
-            index,
-            character,
-            next_character,
-        )
-    }
-}
-
-impl<TokType: TokenTypeFunctionality> std::fmt::Display for Token<TokType> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:?} - {{Internal Value: \"{}\"}}",
-            self.value_store,
-            self.internal_value.escape_default().to_string()
-        )
-    }
-}
-
-/// Used to transform an AnyToken into A token that conforms to `TokType`.
-pub trait GetToken {
-    /// Do as defined above.
-    fn get_token<TokType: 'static + TokenType>(&self) -> Option<&Token<TokType>>;
-    /// Do as defined above but mutably.
-    fn get_token_mut<TokType: 'static + TokenType>(&mut self) -> Option<&mut Token<TokType>>;
-}
-
-impl GetToken for dyn AnyToken {
-    fn get_token<TokType: 'static + TokenType>(&self) -> Option<&Token<TokType>> {
-        self.as_any().downcast_ref::<Token<TokType>>()
-    }
-
-    fn get_token_mut<TokType: 'static + TokenType>(&mut self) -> Option<&mut Token<TokType>> {
-        self.as_any_mut().downcast_mut::<Token<TokType>>()
-    }
-}
-
-/// Used to represent all kinds of Tokens, as a "workaround" to Rusts' lack of type inheritance.
-pub trait AnyToken: Any + std::fmt::Display {
-    /// Lex the current token.
-    /// For internal use only.
+    /// Lex a character at a given index.
     fn lex(
         &mut self,
+        internal_value: &mut String,
         index: usize,
         character: char,
-        next_character: Option<char>,
-    ) -> Result<(), LexCharacterError>;
-    fn value_store_string(&self) -> String;
-    fn value_store(&self) -> &dyn TokenType;
+    ) -> Result<(), LexError>;
+
+    /// Returns whether the token is done parsing.
+    /// None means that it doesn't matter.
+    fn is_done(&self) -> Option<bool>;
+    /// Determines whether this token type should avoid being
+    /// pushed into the output of a lexer.
+    fn should_skip(&self) -> bool {
+        false
+    }
+}
+
+#[derive(Debug, Clone)]
+/// Describes a token.
+/// `ValueStore` determines the type of token.
+/// `value_store` is a value of type `ValueStore`, which stores the state of lexing.
+/// `internal_value` stores the validated characters for this token.
+pub struct Token<ValueStore: TokenValue> {
+    pub internal_value: String,
+    pub value_store: ValueStore,
+}
+
+impl<ValueStore: TokenValue> Token<ValueStore> {
+    /// Create a new token with a.
+    /// `value_store` determines the token type, and provides an empty state for
+    /// lexing.
+    pub fn new(value_store: ValueStore) -> Self {
+        Self {
+            internal_value: "".into(),
+            value_store,
+        }
+    }
+
+    /// Consume `self` and return a shared reference.
+    pub fn shared(self) -> Rc<RefCell<dyn AnyToken>> {
+        Rc::new(RefCell::new(self))
+    }
+
+    /// Lex character and index, returning an error if it was unsuccessful.
+    pub fn lex(&mut self, index: usize, character: char) -> Result<(), LexError> {
+        self.value_store
+            .lex(&mut self.internal_value, index, character)
+    }
+
+    /// Return the token name.
+    pub fn token_name(&self) -> String {
+        self.value_store.token_name()
+    }
+
+    /// Returns whether this token be skipped in the lexer output.
+    pub fn should_skip(&self) -> bool {
+        self.value_store.should_skip()
+    }
+
+    /// Return whether or not this token is done lexing.
+    pub fn is_done(&self) -> bool {
+        self.value_store.is_done().unwrap_or(true)
+    }
+}
+
+/// Trait to describe all tokens.
+pub trait AnyToken: std::fmt::Debug + Any {
+    /// Lex index and character.
+    fn lex(&mut self, index: usize, character: char) -> Result<(), LexError>;
+    /// Return the token's type name.
+    fn token_name(&self) -> String;
+    /// Returns whether this token should be skipped when appending to the output
+    /// of a lexer.
+    fn should_skip(&self) -> bool;
+    /// Returns whether or not this token is done lexing.
     fn is_done(&self) -> bool;
 
+    /// Converts `self` to an Any reference.
     fn as_any(&self) -> &dyn Any;
+    /// Same as `as_any`, but the reference is mutable.
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-impl<TokType: TokenTypeFunctionality + 'static> AnyToken for Token<TokType> {
-    fn value_store_string(&self) -> String {
-        self.value_store_string()
+impl<ValueStore: TokenValue> AnyToken for Token<ValueStore> {
+    fn lex(&mut self, index: usize, character: char) -> Result<(), LexError> {
+        self.lex(index, character)
     }
 
-    fn value_store(&self) -> &dyn TokenType {
-        self.value_store()
+    fn should_skip(&self) -> bool {
+        self.should_skip()
+    }
+
+    fn token_name(&self) -> String {
+        self.token_name()
     }
 
     fn is_done(&self) -> bool {
-        self.is_done().unwrap_or(true)
-    }
-
-    fn lex(
-        &mut self,
-        index: usize,
-        character: char,
-        next_character: Option<char>,
-    ) -> Result<(), LexCharacterError> {
-        self.lex(index, character, next_character)
+        self.is_done()
     }
 
     fn as_any(&self) -> &dyn Any {
         self as &dyn Any
     }
-
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self as &mut dyn Any
     }
 }
 
-/// Converts self to AnyToken.
-/// Consumes self.
-pub trait ToAnyToken {
-    fn any_token(self) -> Box<dyn AnyToken>;
+/// Trait to make checking AnyToken's real type easier.
+pub trait AnyTokenCheck {
+    /// Checks if self is a `Token<T>`.
+    fn token_type_check<T: TokenValue>(&self) -> bool;
 }
 
-impl<OriginalToken: AnyToken> ToAnyToken for OriginalToken {
-    fn any_token(self) -> Box<dyn AnyToken> {
-        Box::new(self)
+impl AnyTokenCheck for dyn AnyToken {
+    fn token_type_check<T: TokenValue>(&self) -> bool {
+        self.as_any().is::<Token<T>>()
+    }
+}
+
+#[derive(Clone, Default, Debug)]
+/// An iterator of tokens.
+pub struct TokenIter {
+    /// The tokens to be iterated over.
+    tokens: VecDeque<Rc<RefCell<dyn AnyToken>>>,
+    /// The last node to be popped from the front.
+    last_node: Option<Rc<RefCell<dyn AnyToken>>>,
+}
+
+impl TokenIter {
+    /// Creates a new iterator of tokens from a vector of shared tokens.
+    pub fn new(tokens: Vec<Rc<RefCell<dyn AnyToken>>>) -> Self {
+        Self {
+            tokens: VecDeque::from(tokens),
+            last_node: None,
+        }
+    }
+
+    /// Returns the last node to be popped from the front.
+    pub fn last_node(&self) -> Option<Rc<RefCell<dyn AnyToken>>> {
+        self.last_node.clone()
+    }
+
+    /// Push a node to the front
+    pub fn push_front(&mut self, node: Rc<RefCell<dyn AnyToken>>) {
+        self.tokens.push_front(node)
+    }
+}
+
+impl Iterator for TokenIter {
+    type Item = Rc<RefCell<dyn AnyToken>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.last_node = self.tokens.front().map(|x| x.clone());
+        self.tokens.pop_front()
+    }
+}
+
+impl ExactSizeIterator for TokenIter {
+    fn len(&self) -> usize {
+        self.tokens.len()
+    }
+}
+
+#[derive(Clone, Debug)]
+/// EOF token.
+pub struct EOF;
+
+impl TokenValue for EOF {
+    fn new(_index: usize, _character: char) -> Result<Self, LexError> {
+        Err(LexError::Other("An EOF token should not be denoted by a character or index.".into()))
+    }
+
+    fn token_name(&self) -> String {
+        "EOF".into()
+    }
+
+    fn lex(
+        &mut self,
+        _internal_value: &mut String,
+        _index: usize,
+        _character: char,
+    ) -> Result<(), LexError> {
+        Err(LexError::Other("An EOF token cannot be lexed".into()))
+    }
+
+    fn is_done(&self) -> Option<bool> {
+        None
     }
 }
