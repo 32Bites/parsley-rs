@@ -186,7 +186,9 @@ pub struct EOF;
 
 impl TokenValue for EOF {
     fn new(_index: usize, _character: char) -> Result<Self, LexError> {
-        Err(LexError::Other("An EOF token should not be denoted by a character or index.".into()))
+        Err(LexError::Other(
+            "An EOF token should not be denoted by a character or index.".into(),
+        ))
     }
 
     fn token_name(&self) -> String {

@@ -1,3 +1,5 @@
+// REDO COMBINATORS!!!!!!!!!
+
 use std::{any::Any, cell::RefCell, rc::Rc};
 
 use crate::lexical::{Token, TokenIter, TokenValue, EOF};
@@ -10,13 +12,21 @@ type ParserResult = Result<Rc<RefCell<dyn AnyNode>>, String>;
 /// A shared reference to a parser function.
 pub type SharedParserFn<'a> = Rc<RefCell<dyn Fn(Rc<RefCell<TokenIter>>) -> ParserResult + 'a>>;
 
+/// Helper to make parser functions.
+pub fn shared_parser<'a, P>(parser: P) -> SharedParserFn<'a>
+where
+    P: Fn(Rc<RefCell<TokenIter>>) -> ParserResult + 'a,
+{
+    Rc::new(RefCell::new(parser))
+}
+
 /// A parser builder that accepts a function `parser`.
 /// `T` corresponds to the TokenValue that your desired token has.
 /// `parser` is a function that will determine the validity of the token,
 /// and return a node if valid.
 /// `parser` must return a node or error.
 pub fn token<'a, T: TokenValue>(parser: fn(Token<T>) -> ParserResult) -> SharedParserFn<'a> {
-    Rc::new(RefCell::new(move |tokens: Rc<RefCell<TokenIter>>| {
+    shared_parser(move |tokens: Rc<RefCell<TokenIter>>| {
         let token = {
             let token = tokens.clone().borrow_mut().next().ok_or("No next token!")?;
             let token = token.borrow();
@@ -29,14 +39,14 @@ pub fn token<'a, T: TokenValue>(parser: fn(Token<T>) -> ParserResult) -> SharedP
         } else {
             Err("Token type does not match what is expected!".into())
         }
-    }))
+    })
 }
 
 /// A parser builder that returns a closure that will ensure that the next tokens will
 /// follow the order of the parser functions in `parsers`.
 /// `parsers` must be in the order in which you want the sequence to correspond to.
 pub fn sequence<'a>(parsers: Vec<SharedParserFn<'a>>) -> SharedParserFn {
-    Rc::new(RefCell::new(move |tokens: Rc<RefCell<TokenIter>>| {
+    shared_parser(move |tokens: Rc<RefCell<TokenIter>>| {
         let mut results: Vec<Rc<RefCell<dyn AnyNode>>> = vec![];
         for parser in &parsers {
             let node = (parser.borrow())(tokens.clone())?;
@@ -49,7 +59,7 @@ pub fn sequence<'a>(parsers: Vec<SharedParserFn<'a>>) -> SharedParserFn {
         };
 
         Ok(node.any_node_shared())
-    }))
+    })
 }
 
 /// A parser builder that returns a closure that will "flatten" the sequence's resulting children.
@@ -57,7 +67,7 @@ pub fn sequence<'a>(parsers: Vec<SharedParserFn<'a>>) -> SharedParserFn {
 /// The children's values must be of type `T`, or `NoValue`.
 /// If a child's value is `NoValue`, nothing will be pushed to the vector.
 pub fn flatten<'a, T: Any>(sequence: SharedParserFn) -> SharedParserFn {
-    Rc::new(RefCell::new(move |tokens| {
+    shared_parser(move |tokens| {
         let result = (sequence.borrow())(tokens)?;
 
         let mut items: Vec<T> = vec![];
@@ -70,7 +80,11 @@ pub fn flatten<'a, T: Any>(sequence: SharedParserFn) -> SharedParserFn {
                 } else {
                     return Err("".into());
                 }
-            } else if let Some(Node::<NoValue>{value: _, children: _}) = item.borrow_mut().value_mut() {
+            } else if let Some(Node::<NoValue> {
+                value: _,
+                children: _,
+            }) = item.borrow_mut().value_mut()
+            {
                 continue;
             }
             return Err("".into());
@@ -82,7 +96,7 @@ pub fn flatten<'a, T: Any>(sequence: SharedParserFn) -> SharedParserFn {
         };
 
         Ok(node.any_node_shared())
-    }))
+    })
 }
 
 /// Parser builder that returns a parser for EOF tokens.
@@ -97,7 +111,7 @@ pub fn any_of<'a>(parsers: Vec<SharedParserFn<'a>>) -> SharedParserFn {
         panic!("No parsers were provided!")
     }
 
-    Rc::new(RefCell::new(move |tokens: Rc<RefCell<TokenIter>>| {
+    shared_parser(move |tokens: Rc<RefCell<TokenIter>>| {
         let new_iter = || tokens.clone();
         let mut local_tokens = new_iter();
         for parser in &parsers {
@@ -110,7 +124,7 @@ pub fn any_of<'a>(parsers: Vec<SharedParserFn<'a>>) -> SharedParserFn {
         }
 
         Err("".into())
-    }))
+    })
 }
 
 /// Parser builder that defines a set of potentially repeated parsers.
@@ -162,12 +176,8 @@ pub fn repeated<'a>(
 
 /// Parser builder that always succeeds.
 pub fn nothing<'a>() -> SharedParserFn<'a> {
-    Rc::new(
-        RefCell::new(
-            |_| {
-                let mut node = Node::<NoValue>::empty();
-                Ok(node.any_node_shared())
-            }
-        )
-    )
+    Rc::new(RefCell::new(|_| {
+        let mut node = Node::<NoValue>::empty();
+        Ok(node.any_node_shared())
+    }))
 }

@@ -56,7 +56,7 @@ impl GetAnyNodeValue for dyn AnyNode {
     }
 
     fn is_type<T: Any>(&self) -> bool {
-        self.as_any().is::<T>()
+        self.as_any().is::<Node<T>>()
     }
 }
 

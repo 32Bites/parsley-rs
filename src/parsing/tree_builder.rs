@@ -2,10 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::lexical::{Lexer, TokenIter};
 
-use super::{
-    combinators::SharedParserFn,
-    node::AnyNode,
-};
+use super::{combinators::SharedParserFn, node::AnyNode};
 
 /// Defines a structure that will build an AST.
 pub struct TreeBuilder<'a> {
@@ -24,6 +21,9 @@ impl<'a> TreeBuilder<'a> {
         let tokens = Rc::new(RefCell::new(TokenIter::new(tokens)));
         let results = (self.root_parser.borrow())(tokens.clone());
         if tokens.borrow().len() > 0 {
+            for tok in tokens.borrow_mut().clone() {
+                println!("Failed: {}", tok.borrow().token_name());
+            }
             return Err("Unhandled Tokens!".into());
         }
 

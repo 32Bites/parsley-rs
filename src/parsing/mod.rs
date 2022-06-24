@@ -3,8 +3,8 @@
 
 /// Provides cominators for easy parsing.
 pub mod combinators;
-mod tree_builder;
 mod node;
+mod tree_builder;
 // mod error;
 
 pub use node::*;
@@ -25,7 +25,6 @@ pub mod macros {
             $crate::parsing::combinators::token($val);
         };
     }
-
 
     #[macro_export]
     macro_rules! flatten {
