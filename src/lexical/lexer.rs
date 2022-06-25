@@ -86,7 +86,8 @@ impl Lexer {
                     }
                 } else {
                     // Continue to lex this token.
-                    if let Err(error) = current_token.borrow_mut().lex(index, character) {
+                    let error = current_token.borrow_mut().lex(index, character);
+                    if let Err(error) = error {
                         if let LexError::StartNewToken(reuse_character) = error {
                             // TODO: Start new token
                             if reuse_character {
@@ -120,7 +121,7 @@ impl Lexer {
             if let None = chars.peek() {
                 if let Some(current_token) = self.current_token.take() {
                     let borrowed = current_token.borrow();
-                    if borrowed.is_done() {
+                    if borrowed.is_done() || borrowed.can_be_forced() {
                         if !borrowed.should_skip() {
                             self.tokens.push(current_token.clone());
                         } // We dont want to crash if there is nothing to lex.

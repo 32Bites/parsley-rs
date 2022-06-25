@@ -26,6 +26,12 @@ pub trait TokenValue: Sized + std::fmt::Debug + 'static + Clone {
     /// Returns whether the token is done parsing.
     /// None means that it doesn't matter.
     fn is_done(&self) -> Option<bool>;
+
+    /// Same as `is_done`, except it is only executed before the lexer finishes. 
+    /// This is used as a failsafe for tokens that while in other contexts, would need
+    /// more characters to lex, do not need to continue lexing when the next token is
+    /// an EOF. Usually this entails a "default" of some kind for that token.
+    fn can_be_forced(&self) -> Option<bool>;
     /// Determines whether this token type should avoid being
     /// pushed into the output of a lexer.
     fn should_skip(&self) -> bool {
@@ -79,6 +85,11 @@ impl<ValueStore: TokenValue> Token<ValueStore> {
     pub fn is_done(&self) -> bool {
         self.value_store.is_done().unwrap_or(true)
     }
+
+    /// Returns whether or not this token can be considered done at an EOF, despite `is_done` evaluating to false.
+    fn can_be_forced(&self) -> bool {
+        self.value_store.can_be_forced().unwrap_or(true)
+    }
 }
 
 /// Trait to describe all tokens.
@@ -92,6 +103,9 @@ pub trait AnyToken: std::fmt::Debug + Any {
     fn should_skip(&self) -> bool;
     /// Returns whether or not this token is done lexing.
     fn is_done(&self) -> bool;
+
+    /// Returns whether or not this token can be considered done at an EOF, despite `is_done` evaluating to false.
+    fn can_be_forced(&self) -> bool;
 
     /// Converts `self` to an Any reference.
     fn as_any(&self) -> &dyn Any;
@@ -114,6 +128,10 @@ impl<ValueStore: TokenValue> AnyToken for Token<ValueStore> {
 
     fn is_done(&self) -> bool {
         self.is_done()
+    }
+
+    fn can_be_forced(&self) -> bool {
+        self.can_be_forced()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -205,6 +223,10 @@ impl TokenValue for EOF {
     }
 
     fn is_done(&self) -> Option<bool> {
+        None
+    }
+
+    fn can_be_forced(&self) -> Option<bool> {
         None
     }
 }
