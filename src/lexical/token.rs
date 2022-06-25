@@ -31,7 +31,7 @@ pub trait TokenValue: Sized + std::fmt::Debug + 'static + Clone {
     /// This is used as a failsafe for tokens that while in other contexts, would need
     /// more characters to lex, do not need to continue lexing when the next token is
     /// an EOF. Usually this entails a "default" of some kind for that token.
-    fn can_be_forced(&mut self) -> Option<bool>;
+    fn can_be_forced(&self) -> Option<bool>;
     /// Determines whether this token type should avoid being
     /// pushed into the output of a lexer.
     fn should_skip(&self) -> bool {
@@ -87,7 +87,7 @@ impl<ValueStore: TokenValue> Token<ValueStore> {
     }
 
     /// Returns whether or not this token can be considered done at an EOF, despite `is_done` evaluating to false.
-    fn can_be_forced(&mut self) -> bool {
+    fn can_be_forced(&self) -> bool {
         self.value_store.can_be_forced().unwrap_or(true)
     }
 }
@@ -226,7 +226,7 @@ impl TokenValue for EOF {
         None
     }
 
-    fn can_be_forced(&mut self) -> Option<bool> {
+    fn can_be_forced(&self) -> Option<bool> {
         None
     }
 }
