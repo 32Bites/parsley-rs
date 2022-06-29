@@ -27,7 +27,7 @@ pub trait TokenValue: Sized + std::fmt::Debug + 'static + Clone {
     /// None means that it doesn't matter.
     fn is_done(&self) -> Option<bool>;
 
-    /// Same as `is_done`, except it is only executed before the lexer finishes. 
+    /// Same as `is_done`, except it is only executed before the lexer finishes.
     /// This is used as a failsafe for tokens that while in other contexts, would need
     /// more characters to lex, do not need to continue lexing when the next token is
     /// an EOF. Usually this entails a "default" of some kind for that token.

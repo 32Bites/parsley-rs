@@ -1,10 +1,11 @@
-use std::{any::Any, cell::RefCell, rc::Rc, vec};
+use std::{any::Any, cell::RefCell, fmt::Debug, rc::Rc, vec};
 
 /// Type to describe zero value.
+#[derive(Debug)]
 pub struct NoValue;
 
 /// Trait to describe all nodes.
-pub trait AnyNode: Any {
+pub trait AnyNode: Any + Debug {
     /// Convert the node to an Any reference.
     fn as_any(&self) -> &dyn Any;
     /// Convert the node to a mutable Any reference.
@@ -17,7 +18,7 @@ pub trait AnyNode: Any {
     fn shared(self) -> Rc<RefCell<dyn AnyNode>>;
 }
 
-impl<T: Any> AnyNode for Node<T> {
+impl<T: Any + Debug> AnyNode for Node<T> {
     fn as_any(&self) -> &dyn Any {
         self as &dyn Any
     }
@@ -38,24 +39,24 @@ impl<T: Any> AnyNode for Node<T> {
 /// Helper trait for checking a node's value against a type, and potentially getting it's value.
 pub trait GetAnyNodeValue {
     /// Get an option containing a reference to a Node with a value type of `T`.
-    fn value<T: Any>(&self) -> Option<&Node<T>>;
+    fn value<T: Any + Debug>(&self) -> Option<&Node<T>>;
     /// Same as `value`, except the reference in the option is mutable.
-    fn value_mut<T: Any>(&mut self) -> Option<&mut Node<T>>;
+    fn value_mut<T: Any + Debug>(&mut self) -> Option<&mut Node<T>>;
 
     /// Checks if `self` is a Node<T>.
-    fn is_type<T: Any>(&self) -> bool;
+    fn is_type<T: Any + Debug>(&self) -> bool;
 }
 
 impl GetAnyNodeValue for dyn AnyNode {
-    fn value<T: Any>(&self) -> Option<&Node<T>> {
+    fn value<T: Any + Debug>(&self) -> Option<&Node<T>> {
         self.as_any().downcast_ref::<Node<T>>()
     }
 
-    fn value_mut<T: Any>(&mut self) -> Option<&mut Node<T>> {
+    fn value_mut<T: Any + Debug>(&mut self) -> Option<&mut Node<T>> {
         self.as_any_mut().downcast_mut::<Node<T>>()
     }
 
-    fn is_type<T: Any>(&self) -> bool {
+    fn is_type<T: Any + Debug>(&self) -> bool {
         self.as_any().is::<Node<T>>()
     }
 }
@@ -85,12 +86,12 @@ impl<'a> Iterator for NodeIter {
 /// `value` is the node's corresponding value.
 /// `children` is a vector of node references, which
 /// are the current node's children.
-pub struct Node<T: Any> {
+#[derive(Debug)]
+pub struct Node<T: Any + std::fmt::Debug> {
     pub value: Option<T>,
     pub children: Vec<Rc<RefCell<dyn AnyNode>>>,
 }
-
-impl<T: Any> Node<T> {
+impl<T: Any + Debug> Node<T> {
     /// Convert `self` to an AnyNode reference.
     pub fn any_node(&self) -> &dyn AnyNode {
         self as &dyn AnyNode

@@ -1,6 +1,6 @@
 // REDO COMBINATORS!!!!!!!!!
 
-use std::{any::Any, cell::RefCell, rc::Rc};
+use std::{any::Any, cell::RefCell, fmt::Debug, rc::Rc};
 
 use crate::lexical::{Token, TokenIter, TokenValue, EOF};
 
@@ -28,7 +28,7 @@ where
 pub fn token<'a, T: TokenValue>(parser: fn(Token<T>) -> ParserResult) -> SharedParserFn<'a> {
     shared_parser(move |tokens: Rc<RefCell<TokenIter>>| {
         let token = {
-            let token = tokens.clone().borrow_mut().next().ok_or("No next token!")?;
+            let token = tokens.borrow_mut().next().ok_or("No next token!")?;
             let token = token.borrow();
             let token = token.as_any().downcast_ref::<Token<T>>();
             token.map(|x| x.clone())
@@ -47,17 +47,23 @@ pub fn token<'a, T: TokenValue>(parser: fn(Token<T>) -> ParserResult) -> SharedP
 /// `parsers` must be in the order in which you want the sequence to correspond to.
 pub fn sequence<'a>(parsers: Vec<SharedParserFn<'a>>) -> SharedParserFn {
     shared_parser(move |tokens: Rc<RefCell<TokenIter>>| {
+        // The results of each parser.
         let mut results: Vec<Rc<RefCell<dyn AnyNode>>> = vec![];
+        // Loop through each parser.
         for parser in &parsers {
+            // Parse with the remaining tokens, and store the resulting node if it was successful.
             let node = (parser.borrow())(tokens.clone())?;
+            // Push the result if successful.
             results.push(node.clone());
         }
 
+        // Create a node with no set type, but with the resulting nodes as children.
         let mut node = Node::<NoValue> {
             value: None,
             children: results,
         };
 
+        // Return the node.
         Ok(node.any_node_shared())
     })
 }
@@ -66,30 +72,34 @@ pub fn sequence<'a>(parsers: Vec<SharedParserFn<'a>>) -> SharedParserFn {
 /// The closure will then, return a node with a value of a vector of the children's values.
 /// The children's values must be of type `T`, or `NoValue`.
 /// If a child's value is `NoValue`, nothing will be pushed to the vector.
-pub fn flatten<'a, T: Any>(sequence: SharedParserFn) -> SharedParserFn {
+pub fn flatten<'a, T: Any + Debug>(sequence: SharedParserFn) -> SharedParserFn {
     shared_parser(move |tokens| {
+        // Parse and get a sequence.
         let result = (sequence.borrow())(tokens)?;
 
+        // A vector that will store the value within each child.
         let mut items: Vec<T> = vec![];
 
-        for item in result.borrow().children() {
-            if let Some(Node::<T> { value, children: _ }) = item.borrow_mut().value_mut() {
+        // Get the children.
+        let children = result.borrow();
+        let children = children.children();
+
+        // Loop through each child.
+        for child in children {
+            // Check if the current child is a node with a value of type T.
+            if let Some(Node::<T> { value, children: _ }) = child.borrow_mut().value_mut() {
+                // Take the value if it exists.
                 if let Some(value) = value.take() {
+                    // Push the taken value.
                     items.push(value);
-                    continue;
-                } else {
-                    return Err("".into());
                 }
-            } else if let Some(Node::<NoValue> {
-                value: _,
-                children: _,
-            }) = item.borrow_mut().value_mut()
-            {
+                // Next child.
                 continue;
             }
-            return Err("".into());
+            return Err("Failed when flattening, not all children match the provided type.".into());
         }
 
+        // Create the new node
         let mut node = Node::<Vec<T>> {
             value: Some(items),
             children: vec![],
@@ -101,7 +111,7 @@ pub fn flatten<'a, T: Any>(sequence: SharedParserFn) -> SharedParserFn {
 
 /// Parser builder that returns a parser for EOF tokens.
 pub fn eof<'a>() -> SharedParserFn<'a> {
-    token::<'a, EOF>(|_token| Ok(Rc::new(RefCell::new(Node::<NoValue>::empty()))))
+    token::<'a, EOF>(|_| Ok(Rc::new(RefCell::new(Node::<NoValue>::empty()))))
 }
 
 /// Parser builder that ensures the following tokens follow any of the provided parsers in `parsers`.
@@ -112,18 +122,38 @@ pub fn any_of<'a>(parsers: Vec<SharedParserFn<'a>>) -> SharedParserFn {
     }
 
     shared_parser(move |tokens: Rc<RefCell<TokenIter>>| {
-        let new_iter = || tokens.clone();
-        let mut local_tokens = new_iter();
+        let create_local = || Rc::new(RefCell::new(tokens.borrow().clone()));
+        // Clone the tokens iterator so that we can operate on it without modifying the actual iterator.
+        let mut local_tokens = create_local();
+        println!("Tokens Len before the parsers: {}", tokens.borrow().len());
+        // Loop through each parser
         for parser in &parsers {
+            println!(
+                "Local Tokens Len before the parser: {}",
+                local_tokens.borrow().len()
+            );
+            // Execute the parser, and check if it succeeded.
             if let Ok(node) = (parser.borrow())(local_tokens.clone()) {
-                let old = local_tokens.take();
-                tokens.replace(old);
+                // Take the iterator from local_tokens.
+                println!(
+                    "Local Tokens Len after the parser: {}",
+                    local_tokens.borrow().len()
+                );
+                let local_tokens = local_tokens.take();
+                // Replace the iterators in tokens.
+                tokens.replace(local_tokens);
+                // Return successfully.
                 return Ok(node);
             }
-            local_tokens = new_iter();
+
+            // Failed parsing, clone tokens again to prepare for the next parser.
+            local_tokens = create_local();
         }
 
-        Err("".into())
+        println!("Tokens Len after the parsers: {}", tokens.borrow().len());
+
+        // None of the parsers succeeded.
+        Err("None of the parsers were able to conclude successfully!".into())
     })
 }
 
@@ -138,32 +168,47 @@ pub fn repeated<'a>(
     separator: Option<SharedParserFn<'a>>,
 ) -> SharedParserFn<'a> {
     Rc::new(RefCell::new(move |tokens: Rc<RefCell<TokenIter>>| {
+        // Parsed nodes from the repeated parsers.
         let mut elements: Vec<Rc<RefCell<dyn AnyNode>>> = vec![];
+        // Parser for each repeated item.
         let element = element.borrow();
+        // Check if we're using a serparator
         if let Some(separator) = &separator {
-            //println!("Tokens Before: {:?}\n", tokens);
+            // We're using a separator!
+            // The first tokens must be valid to the element parser.
             if let Ok(node) = element(tokens.clone()) {
+                // It's valid, push it.
                 elements.push(node);
             } else {
+                // Invalid element, failure!!!
                 return Err("Failed to tokenize parse element".into());
             }
+            // Loop through for each separator.
             while let Ok(_) = (separator.borrow())(tokens.clone()) {
+                // Check if the tokens following the current separator are indeed an element.
                 if let Ok(node) = element(tokens.clone()) {
+                    // Valid element, push it!
                     elements.push(node.clone());
                 } else {
+                    // Invalid Element, failure!
                     return Err("Failed to parse repeated element".into());
                 }
             }
         } else {
+            // No separator!
+            // Loop through each valid elementr and push it.
             while let Ok(node) = element(tokens.clone()) {
                 elements.push(node)
             }
         }
 
+        /*
         let last_node = tokens.borrow().last_node();
         if let Some(last_node) = last_node {
             tokens.borrow_mut().push_front(last_node);
         }
+
+        */
 
         let mut node: Node<NoValue> = Node {
             value: None,
