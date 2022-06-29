@@ -7,7 +7,7 @@ use crate::lexical::{Token, TokenIter, TokenValue, EOF};
 use super::node::{AnyNode, GetAnyNodeValue, NoValue, Node};
 
 /// A result from parsing.
-type ParserResult = Result<Rc<RefCell<dyn AnyNode>>, String>;
+pub type ParserResult = Result<Rc<RefCell<dyn AnyNode>>, String>;
 
 /// A shared reference to a parser function.
 pub type SharedParserFn<'a> = Rc<RefCell<dyn Fn(Rc<RefCell<TokenIter>>) -> ParserResult + 'a>>;
