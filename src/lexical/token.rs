@@ -181,6 +181,14 @@ impl TokenIter {
     pub fn push_front(&mut self, node: Rc<RefCell<dyn AnyToken>>) {
         self.tokens.push_front(node)
     }
+
+    /// Print all tokens
+    pub fn print(&self) {
+        println!("Displaying tokens:");
+        for token in &self.tokens {
+            println!("\t{:?}", token)
+        }
+    }
 }
 
 impl Iterator for TokenIter {
