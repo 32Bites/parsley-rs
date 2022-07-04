@@ -1,4 +1,10 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::RefCell,
+    io::{BufRead, Cursor, Seek},
+    rc::Rc,
+};
+
+use character_stream::{CharacterIterator, CharacterStream, CharacterStreamResult};
 
 use super::{error::LexError, AnyToken, Token, EOF};
 
@@ -68,12 +74,24 @@ impl Lexer {
         ))
     }
 
-    /// Tokenize the current input, and return an error if there is a failure.
-    /// If successful, the `tokens` field will hold the output.
-    pub fn tokenize(&mut self, input: String) -> Result<(), LexError> {
-        let mut chars = input.chars().enumerate().peekable();
+    pub fn tokenize_from_stream<Reader: BufRead + Seek>(
+        &mut self,
+        reader: Reader,
+        is_lossy: bool,
+    ) -> Result<(), LexError> {
+        let mut chars = CharacterIterator::new(CharacterStream::new(reader, is_lossy))
+            .enumerate()
+            .peekable();
         while let Some((index, character)) = chars.next() {
             let mut old_token: Option<Rc<RefCell<dyn AnyToken>>> = None;
+
+            let character = match character {
+                CharacterStreamResult::Character(character) => character,
+                CharacterStreamResult::Failure(_, _) if is_lossy => unreachable!(),
+                CharacterStreamResult::Failure(bytes, error) => {
+                    return Err(LexError::CharacterRead(bytes, error))
+                }
+            };
 
             if let Some(current_token) = self.current_token.clone() {
                 if current_token.borrow().is_done() {
@@ -135,6 +153,13 @@ impl Lexer {
         self.tokens.push(Rc::new(RefCell::new(Token::new(EOF))));
 
         Ok(())
+    }
+
+    /// Tokenize the current input, and return an error if there is a failure.
+    /// If successful, the `tokens` field will hold the output.
+    pub fn tokenize(&mut self, input: String) -> Result<(), LexError> {
+        let cursor: Cursor<Vec<u8>> = Cursor::new(input.into_bytes());
+        self.tokenize_from_stream(cursor, true)
     }
     /*
     /// Consumes self and creates a TreeBuilder for working attempting to parse an AST.
