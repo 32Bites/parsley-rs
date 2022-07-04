@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use character_stream::{CharacterIterator, CharacterStream, CharacterStreamResult};
+use character_stream::{CharacterIterator, CharacterStreamResult, ToCharacterIterator, CharacterStream};
 
 use super::{error::LexError, AnyToken, Token, EOF};
 
@@ -74,12 +74,19 @@ impl Lexer {
         ))
     }
 
-    pub fn tokenize_from_stream<Reader: BufRead + Seek>(
+    pub fn tokenize_reader<Reader: BufRead + Seek>(&mut self, reader: Reader, is_lossy: bool) -> Result<(), LexError> {
+        let stream = CharacterStream::new(reader, is_lossy);
+        let iter = CharacterIterator::new(stream);
+
+        self.tokenize_iter(iter)
+    }
+
+    pub fn tokenize_iter<Reader: BufRead + Seek>(
         &mut self,
-        reader: Reader,
-        is_lossy: bool,
+        iter: CharacterIterator<Reader>,
     ) -> Result<(), LexError> {
-        let mut chars = CharacterIterator::new(CharacterStream::new(reader, is_lossy))
+        let is_lossy = iter.is_lossy();
+        let mut chars = iter
             .enumerate()
             .peekable();
         while let Some((index, character)) = chars.next() {
@@ -158,8 +165,7 @@ impl Lexer {
     /// Tokenize the current input, and return an error if there is a failure.
     /// If successful, the `tokens` field will hold the output.
     pub fn tokenize(&mut self, input: String) -> Result<(), LexError> {
-        let cursor: Cursor<Vec<u8>> = Cursor::new(input.into_bytes());
-        self.tokenize_from_stream(cursor, true)
+        self.tokenize_iter(input.to_character_iterator_lossy())
     }
     /*
     /// Consumes self and creates a TreeBuilder for working attempting to parse an AST.
