@@ -1,30 +1,32 @@
+use std::error::Error;
+
 #[derive(Debug)]
-/// Represents an error that occurs when lexing a character.
+/// Represents an error that occurs when lexing.
 pub enum LexError {
-    Character(String),
-    Other(String),
-    StartNewToken(bool),
-    CharacterRead(Vec<u8>, Box<dyn std::error::Error>),
+    /// An error that you can throw when a token requires that within it's lexical logic,
+    /// the stream must not cease to return graphemes.
+    UnexpectedEndOfStream,
+    /// An error that simply holds a boxed error.
+    Other(Box<dyn Error>),
+}
+
+impl LexError {
+    /// Helper for creating a [LexError::Other].
+    pub fn other<T: Into<Box<dyn Error>>>(error: T) -> Self {
+        Self::Other(error.into())
+    }
 }
 
 impl std::fmt::Display for LexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let error = match self {
-            Self::Character(error) | Self::Other(error) => error.to_owned(),
-            Self::StartNewToken(should_reuse_character) => {
-                let string = match should_reuse_character {
-                    true => "",
-                    false => " not",
-                };
-                format!("The provided character is invalid, so create a new token, and you should{} reuse the current character.", string)
-            }
-            Self::CharacterRead(bytes, error) => {
-                format!("Character read error on bytes {:?}: {}", bytes, error)
-            }
-        };
-
-        write!(f, "{}", error)
+        match self {
+            LexError::UnexpectedEndOfStream => write!(
+                f,
+                "Encountered an unexpected EOF when reading graphemes for lexing."
+            ),
+            LexError::Other(error) => write!(f, "{}", error),
+        }
     }
 }
 
-impl std::error::Error for LexError {}
+impl Error for LexError {}

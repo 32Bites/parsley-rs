@@ -1,175 +1,98 @@
 use std::{
-    cell::RefCell,
-    io::{BufRead, Cursor, Seek},
-    rc::Rc,
+    fmt::Debug,
+    io::{BufRead, Seek},
 };
 
-use character_stream::{CharacterIterator, CharacterStreamResult, ToCharacterIterator, CharacterStream};
+use itertools::{Itertools, MultiPeek};
+use unicode_reader::Graphemes;
 
-use super::{error::LexError, AnyToken, Token, EOF};
+use super::{error::LexError, stream::Chars, Tokenizer};
 
-pub struct Lexer {
-    tokens: Vec<Rc<RefCell<dyn AnyToken>>>,
-    current_token: Option<Rc<RefCell<dyn AnyToken>>>,
-    create_tokens:
-        Vec<fn(index: usize, character: char) -> Result<Rc<RefCell<dyn AnyToken>>, LexError>>,
+/// Represents a function that creates an empty token. This assumes that each token is represented by a single type,
+/// such as an enum, however for each enumeration that will be used in the lexer, there is a corresponding `TokenizerFn`.
+pub type TokenizerFn<Token, Reader> = fn() -> Box<dyn Tokenizer<Token, Reader>>;
+
+/// Accepts graphemes from an input reader, and lexes them into tokens.
+pub struct Lexer<
+    Token: Debug + Clone,
+    Reader: BufRead + Seek,
+    Incoming: Iterator<Item = std::io::Result<char>> = Chars<Reader>,
+> {
+    tokens: Vec<Token>,
+    creation_funcs: Vec<TokenizerFn<Token, Reader>>,
+    eof_token: Option<Token>,
+    incoming: MultiPeek<Graphemes<Incoming>>,
 }
 
-impl Lexer {
-    /// Create a new Lexer.
-    /// `input` is the input string to analyze.
-    /// `new_token_functions` is the list of new token functions, usually from a NewTokenBuilder.
-    pub fn new() -> Self {
+impl<Token: Debug + Clone, Reader: BufRead + Seek> Lexer<Token, Reader> {
+    /// Create a lexer.
+    pub fn new(reader: Reader, is_lossy: bool, eof_token: Option<Token>) -> Self {
         Self {
             tokens: vec![],
-            create_tokens: vec![],
-            current_token: None,
+            creation_funcs: vec![],
+            incoming: Graphemes::from(Chars::new(reader, is_lossy)).multipeek(),
+            eof_token,
         }
     }
 
-    pub fn add_token_creation(
-        &mut self,
-        func: fn(index: usize, character: char) -> Result<Rc<RefCell<dyn AnyToken>>, LexError>,
-    ) {
-        self.create_tokens.push(func)
+    /// Add a tokenizer function.
+    pub fn add_tokenizer(&mut self, creation_func: TokenizerFn<Token, Reader>) {
+        self.creation_funcs.push(creation_func)
     }
 
-    /// Returns an immutable reference to the tokens.
-    pub fn tokens(&self) -> &Vec<Rc<RefCell<dyn AnyToken>>> {
+    /// Add a tokenizer function and return self.
+    pub fn tokenizer(mut self, creation_func: TokenizerFn<Token, Reader>) -> Self {
+        self.add_tokenizer(creation_func);
+        self
+    }
+
+    /// Return the stored tokens.
+    pub fn tokens(&self) -> &Vec<Token> {
         &self.tokens
     }
 
-    /// Returns a mutable reference to the tokens.
-    pub fn tokens_mut(&mut self) -> &mut Vec<Rc<RefCell<dyn AnyToken>>> {
-        &mut self.tokens
-    }
-
-    /// Consumes self and returns the token list.
-    pub fn take_tokens(self) -> Vec<Rc<RefCell<dyn AnyToken>>> {
-        self.tokens
-    }
-
-    /// Create a new Token and replace the current Token with it.
-    /// Return the previous Token for use elsewhere.
-    /// Will return an error is there is a failure lexing with all provided new token functions.
-    /// For internal use only.
-    fn new_token(
-        &mut self,
-        index: usize,
-        character: char,
-    ) -> Result<Option<Rc<RefCell<dyn AnyToken>>>, LexError> {
-        for func in &self.create_tokens {
-            if let Ok(token) = func(index, character) {
-                token.borrow_mut().lex(index, character)?;
-                if let Some(old_token) = self.current_token.replace(token) {
-                    return Ok(Some(old_token.clone()));
-                } else {
-                    return Ok(None);
-                }
-            }
-        }
-
-        Err(LexError::Character(
-            "Failed to find a tokenizer for the current token".into(),
-        ))
-    }
-
-    pub fn tokenize_reader<Reader: BufRead + Seek>(&mut self, reader: Reader, is_lossy: bool) -> Result<(), LexError> {
-        let stream = CharacterStream::new(reader, is_lossy);
-        let iter = CharacterIterator::new(stream);
-
-        self.tokenize_iter(iter)
-    }
-
-    pub fn tokenize_iter<Reader: BufRead + Seek>(
-        &mut self,
-        iter: CharacterIterator<Reader>,
-    ) -> Result<(), LexError> {
-        let is_lossy = iter.is_lossy();
-        let mut chars = iter
-            .enumerate()
-            .peekable();
-        while let Some((index, character)) = chars.next() {
-            let mut old_token: Option<Rc<RefCell<dyn AnyToken>>> = None;
-
-            let character = match character {
-                CharacterStreamResult::Character(character) => character,
-                CharacterStreamResult::Failure(_, _) if is_lossy => unreachable!(),
-                CharacterStreamResult::Failure(bytes, error) => {
-                    return Err(LexError::CharacterRead(bytes, error))
-                }
-            };
-
-            if let Some(current_token) = self.current_token.clone() {
-                if current_token.borrow().is_done() {
-                    // The current token is done lexing.
-                    // Create a token!
-                    if let Some(token) = self.new_token(index, character)? {
-                        if !token.borrow().should_skip() {
-                            old_token = Some(token.clone());
-                        }
-                    }
-                } else {
-                    // Continue to lex this token.
-                    let error = current_token.borrow_mut().lex(index, character);
-                    if let Err(error) = error {
-                        if let LexError::StartNewToken(reuse_character) = error {
-                            // TODO: Start new token
-                            if reuse_character {
-                                // Create a token!
-                                if let Some(token) = self.new_token(index, character)? {
-                                    if !token.borrow().should_skip() {
-                                        old_token = Some(token);
-                                    }
-                                }
+    /// Tokenize tokens and store them in self.
+    pub fn tokenize(&mut self) -> Result<(), LexError> {
+        while let Some(result) = self.incoming.next() {
+            match result {
+                Ok(grapheme) => {
+                    let next = match self.incoming.peek() {
+                        None => None,
+                        Some(result) => match result {
+                            Err(_) => None,
+                            Ok(grapheme) => Some(grapheme.clone()),
+                        },
+                    };
+                    match self
+                        .creation_funcs
+                        .iter()
+                        .filter_map(|creation_func| {
+                            let mut tokenizer = creation_func();
+                            if tokenizer.can_tokenize(&self.tokens, &grapheme, &next) {
+                                Some(tokenizer.lex(&self.tokens, &mut self.incoming))
+                            } else {
+                                None
                             }
-                        } else {
-                            return Err(error);
+                        })
+                        .last()
+                    {
+                        Some(token) => self.tokens.push(token?),
+                        None => {
+                            return Err(LexError::other(format!(
+                                "Failed to find tokenizer for {:?}",
+                                grapheme
+                            )))
                         }
                     }
                 }
-            } else {
-                // We must be on the first token.
-                // Create a token and lex it!
-                // Create a token!
-                if let Some(token) = self.new_token(index, character)? {
-                    if !token.borrow().should_skip() {
-                        old_token = Some(token);
-                    }
-                }
-            }
-
-            if let Some(old_token) = old_token {
-                self.tokens.push(old_token);
-            }
-
-            if let None = chars.peek() {
-                if let Some(current_token) = self.current_token.take() {
-                    let borrowed = current_token.borrow();
-                    if borrowed.is_done() || borrowed.can_be_forced() {
-                        if !borrowed.should_skip() {
-                            self.tokens.push(current_token.clone());
-                        } // We dont want to crash if there is nothing to lex.
-                    } else {
-                        return Err(LexError::Other("Final token is not finished!".into()));
-                    }
-                }
+                Err(error) => return Err(LexError::other(error)),
             }
         }
 
-        self.tokens.push(Rc::new(RefCell::new(Token::new(EOF))));
+        if let Some(eof_token) = &self.eof_token {
+            self.tokens.push(eof_token.clone());
+        }
 
         Ok(())
     }
-
-    /// Tokenize the current input, and return an error if there is a failure.
-    /// If successful, the `tokens` field will hold the output.
-    pub fn tokenize(&mut self, input: String) -> Result<(), LexError> {
-        self.tokenize_iter(input.to_character_iterator_lossy())
-    }
-    /*
-    /// Consumes self and creates a TreeBuilder for working attempting to parse an AST.
-    pub fn tree_builder(self, allowed_patterns: SharedTreeBuilderPatternList) -> TreeBuilder {
-        TreeBuilder::new(self, allowed_patterns)
-    }*/
 }
