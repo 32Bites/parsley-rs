@@ -6,6 +6,7 @@ mod token;
 
 pub use lexer::*;
 pub use token::*;
+pub use stream::*;
 
 /// Stores error types.
 pub mod error;
