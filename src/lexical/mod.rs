@@ -181,9 +181,9 @@ mod tests {
         }
         let input = Cursor::new(input);
 
-        let mut lexer = Lexer::new(input, true, Some(Token::Eof));
-        lexer.add_tokenizer(|| Box::new(DoubleQuotedStringLexer::new()));
-        lexer.add_tokenizer(|| Box::new(Whitespace));
+        let mut lexer = Lexer::new(input, true, Some(Token::Eof))
+            .tokenizer(|| DoubleQuotedStringLexer::new())
+            .tokenizer(|| Whitespace);
 
         if let Err(error) = lexer.tokenize() {
             panic!("{}", error)

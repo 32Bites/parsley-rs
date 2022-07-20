@@ -4,12 +4,14 @@ use super::{error::LexError, stream::Graphemes, Token, TokenValue, Tokenizer};
 
 /// Represents a function that creates an empty token. This assumes that each token is represented by a single type,
 /// such as an enum, however for each enumeration that will be used in the lexer, there is a corresponding `TokenizerFn`.
-pub type TokenizerFn<TokenType> = fn() -> Box<dyn Tokenizer<TokenType>>;
+pub trait TokenizerFn<'a, TokenType: TokenValue>: Fn() -> Box<dyn Tokenizer<TokenType> + 'a> + 'a {}
+
+impl<'a, TokenType: TokenValue, T: Fn() -> Box<dyn Tokenizer<TokenType> + 'a> + 'a> TokenizerFn<'a, TokenType> for T {}
 
 /// Accepts graphemes from an input reader, and lexes them into tokens.
 pub struct Lexer<'a, TokenType: TokenValue> {
     tokens: Vec<Token<TokenType>>,
-    creation_funcs: Vec<TokenizerFn<TokenType>>,
+    creation_funcs: Vec<Box<dyn TokenizerFn<'a, TokenType>>>,
     eof_token: Option<TokenType>,
     incoming: Graphemes<'a>,
 }
@@ -29,15 +31,15 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
         }
     }
 
-    /// Add a tokenizer function.
-    pub fn add_tokenizer(&mut self, creation_func: TokenizerFn<TokenType>) {
-        self.creation_funcs.push(creation_func)
-    }
-
     /// Add a tokenizer function and return self.
-    pub fn tokenizer(mut self, creation_func: TokenizerFn<TokenType>) -> Self {
-        self.add_tokenizer(creation_func);
+    pub fn tokenizer<F, T>(mut self, f: F) -> Self where F: Fn() -> T + 'a, T: Tokenizer<TokenType> + 'a {
+        self.add_tokenizer(f);
         self
+    }
+    
+    /// Add a tokenizer function.
+    pub fn add_tokenizer<F, T>(&mut self, f: F) where F: Fn() -> T + 'a, T: Tokenizer<TokenType> + 'a {
+        self.creation_funcs.push(Box::new(move || Box::new(f())));
     }
 
     /// Return a reference to the tokens.
