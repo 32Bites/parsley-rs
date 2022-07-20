@@ -40,9 +40,19 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
         self
     }
 
-    /// Return the stored tokens.
+    /// Return a reference to the tokens.
     pub fn tokens(&self) -> &Vec<Token<TokenType>> {
         &self.tokens
+    }
+
+    /// Return a mutable reference to the tokens.
+    pub fn tokens_mut(&mut self) -> &mut Vec<Token<TokenType>> {
+        &mut self.tokens
+    }
+
+    /// Return the tokens and consume `self`.
+    pub fn take(self) -> Vec<Token<TokenType>> {
+        self.tokens
     }
 
     /// Tokenize tokens and store them in self.
