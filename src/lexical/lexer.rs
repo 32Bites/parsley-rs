@@ -53,6 +53,7 @@ impl<TokenType: TokenValue, Reader: Read> Lexer<TokenType, Reader> {
                             Ok(grapheme) => Some(grapheme.clone()),
                         },
                     };
+                    self.incoming.reset_peek();
 
                     let mut found = false;
 
