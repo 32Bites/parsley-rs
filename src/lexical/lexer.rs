@@ -14,9 +14,9 @@ pub struct Lexer<'a, TokenType: TokenValue> {
     incoming: Graphemes<'a>,
 }
 
-impl<TokenType: TokenValue> Lexer<'_, TokenType> {
+impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
     /// Create a lexer.
-    pub fn new<Reader: Read + 'static>(
+    pub fn new<Reader: Read + 'a>(
         reader: Reader,
         is_lossy: bool,
         eof_token: Option<TokenType>,
