@@ -67,6 +67,7 @@ impl<TokenType: TokenValue, Reader: Read> Lexer<TokenType, Reader> {
                                 {
                                     let start_index = self.incoming.current_index();
                                     let token = tokenizer.lex(&self.tokens, &mut self.incoming);
+                                    self.incoming.reset_peek();
                                     found = true;
                                     return Some((start_index, token));
                                 }
