@@ -10,7 +10,13 @@ use super::{
 
 /// Trait that dictates whether a type is considered a token.
 /// Used to avoid implementation conflicts.
-pub trait TokenValue: Debug + Clone {}
+pub trait TokenValue: Debug + Clone {
+    /// Defines whether the lexer should avoid pushing the current token into the token
+    /// list. This is useful for say whitespace.
+    fn should_skip(&self) -> bool {
+        false
+    }
+}
 
 #[derive(Debug, Clone)]
 /// Represents a lexical token.

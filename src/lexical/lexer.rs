@@ -83,10 +83,12 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
                     {
                         Some((start_index, token)) => {
                             let token = token?;
-                            let end_index = self.incoming.current_index();
-                            let bounded_token = Token::new(token, Some(start_index..=end_index));
-
-                            self.tokens.push(bounded_token)
+                            if !token.should_skip() {
+                                let end_index = self.incoming.current_index();
+                                let bounded_token = Token::new(token, Some(start_index..=end_index));
+    
+                                self.tokens.push(bounded_token)
+                            }
                         }
                         None => {
                             return Err(LexError::other(format!(

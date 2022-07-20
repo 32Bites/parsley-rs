@@ -30,7 +30,11 @@ mod tests {
         }
     }
 
-    impl super::TokenValue for Token {}
+    impl super::TokenValue for Token {
+        fn should_skip(&self) -> bool {
+            matches!(self, Self::Whitespace)
+        }
+    }
 
     impl Display for Token {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
