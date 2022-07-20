@@ -151,7 +151,7 @@ impl<TokenType: TokenValue> AsMut<RangeInclusive<usize>> for Token<TokenType> {
 }
 
 /// Represents a tokenizer.
-pub trait Tokenizer<TokenType: TokenValue, Reader: Read> {
+pub trait Tokenizer<TokenType: TokenValue> {
     /// Determines whether or not the given grapheme and potential next grapheme consitutes the start
     /// of a potentially valid token. If it is indeed valid and you require the current grapheme,
     /// store `grapheme` somewhere in your tokenizer. However do not store `next`, as it will be
@@ -174,6 +174,6 @@ pub trait Tokenizer<TokenType: TokenValue, Reader: Read> {
     fn lex(
         &mut self,
         tokens: &[Token<TokenType>],
-        incoming: &mut Graphemes<Reader>,
+        incoming: &mut Graphemes,
     ) -> Result<TokenType, LexError>;
 }

@@ -57,7 +57,7 @@ mod tests {
         }
     }
 
-    impl<'a> Tokenizer<Token, Cursor<Vec<u8>>> for DoubleQuotedStringLexer {
+    impl<'a> Tokenizer<Token> for DoubleQuotedStringLexer {
         fn can_tokenize(
             &mut self,
             _: &[super::Token<Token>],
@@ -76,7 +76,7 @@ mod tests {
         fn lex(
             &mut self,
             _: &[super::Token<Token>],
-            incoming_characters: &mut super::stream::Graphemes<Cursor<Vec<u8>>>,
+            incoming_characters: &mut super::stream::Graphemes,
         ) -> Result<Token, LexError> {
             if let Some('"') = self.internal_value.chars().last() {
                 return Ok(Token::double_quoted_string(""));
@@ -122,7 +122,7 @@ mod tests {
         }
     }
 
-    impl<'a> Tokenizer<Token, Cursor<Vec<u8>>> for Whitespace {
+    impl<'a> Tokenizer<Token> for Whitespace {
         fn can_tokenize(
             &mut self,
             _: &[super::Token<Token>],
@@ -136,7 +136,7 @@ mod tests {
         fn lex(
             &mut self,
             _: &[super::Token<Token>],
-            incoming: &mut super::stream::Graphemes<Cursor<Vec<u8>>>,
+            incoming: &mut super::stream::Graphemes,
         ) -> Result<Token, LexError> {
             if let Some((_, Ok(first_grapheme))) = incoming.peek() {
                 if !first_grapheme.chars().fold(true, Whitespace::is) {

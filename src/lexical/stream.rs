@@ -106,8 +106,8 @@ impl GraphemeLocation {
 
 /// A wrapper struct to simplify the utilization of the enumerated multipeek grapheme iterator
 /// that is utilized for lexing.
-pub struct Graphemes<Reader: Read> {
-    iter: MultiPeek<unicode_reader::Graphemes<Chars<Reader>>>,
+pub struct Graphemes {
+    iter: MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read>>>>,
     successful_reads: usize,
     failed_reads: usize,
     line: usize,
@@ -115,12 +115,12 @@ pub struct Graphemes<Reader: Read> {
     invalid_bytes: Rc<RefCell<usize>>,
 }
 
-impl<Reader: Read> Graphemes<Reader> {
-    pub fn new(reader: Reader, is_lossy: bool) -> Self {
+impl Graphemes {
+    pub fn new<Reader: Read + 'static>(reader: Reader, is_lossy: bool) -> Self {
         let invalid_bytes = Rc::new(RefCell::new(0));
         Self {
             iter: unicode_reader::Graphemes::from(Chars::new(
-                reader,
+                Box::new(reader) as Box<dyn Read>,
                 is_lossy,
                 Some(invalid_bytes.clone()),
             ))
@@ -133,7 +133,7 @@ impl<Reader: Read> Graphemes<Reader> {
         }
     }
 
-    pub fn from(reader: Reader) -> Self {
+    pub fn from<Reader: Read + 'static>(reader: Reader) -> Self {
         Self::new(reader, true)
     }
 
@@ -149,11 +149,11 @@ impl<Reader: Read> Graphemes<Reader> {
         self.iter.reset_peek()
     }
 
-    pub fn inner(&self) -> &MultiPeek<unicode_reader::Graphemes<Chars<Reader>>> {
+    pub fn inner(&self) -> &MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read>>>> {
         &self.iter
     }
 
-    pub fn inner_mut(&mut self) -> &mut MultiPeek<unicode_reader::Graphemes<Chars<Reader>>> {
+    pub fn inner_mut(&mut self) -> &mut MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read>>>> {
         &mut self.iter
     }
 
@@ -182,7 +182,7 @@ impl<Reader: Read> Graphemes<Reader> {
     }
 }
 
-impl<Reader: Read> Iterator for Graphemes<Reader> {
+impl Iterator for Graphemes {
     type Item = Result<(GraphemeLocation, String), (usize, Error)>;
 
     fn next(&mut self) -> Option<Self::Item> {
