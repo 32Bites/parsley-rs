@@ -37,7 +37,7 @@ impl<TokenType: TokenValue> Display for Token<TokenType> {
 
 impl<TokenType: TokenValue + PartialEq> PartialEq for Token<TokenType> {
     fn eq(&self, other: &Self) -> bool {
-        self.range == other.range && self.value == other.value
+        self.value == other.value
     }
 }
 

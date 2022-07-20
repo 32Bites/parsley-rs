@@ -13,6 +13,6 @@ keywords = ["lexer", "parser", "lexing", "parsing", "analysis"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-character-stream = "0.7.0"
+character-stream = "0.7.1"
 unicode_reader = "1.0.2"
 itertools = "0.10"
