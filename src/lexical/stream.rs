@@ -137,10 +137,17 @@ impl<'a> Graphemes<'a> {
         Self::new(reader, true)
     }
 
-    pub fn peek(&mut self) -> Option<(usize, &IoResult<String>)> {
+    pub fn peek(&mut self) -> Option<Result<(GraphemeLocation, &String), (usize, &Error)>> {
         let index = self.current_index() + 1;
         match self.iter.peek() {
-            Some(result) => Some((index, result)),
+            Some(Ok(grapheme)) => {
+                let location =
+                    GraphemeLocation::new(index, self.line, self.line_offset);
+                Some(Ok((location, grapheme)))
+            }
+            Some(Err(error)) => {
+                Some(Err((index, error)))
+            }
             None => None,
         }
     }

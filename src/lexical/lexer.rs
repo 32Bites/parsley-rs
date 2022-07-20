@@ -78,9 +78,9 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
                 Ok((location, grapheme)) => {
                     let next = match self.incoming.peek() {
                         None => None,
-                        Some((_, result)) => match result {
+                        Some(result) => match result {
                             Err(_) => None,
-                            Ok(grapheme) => Some(grapheme.clone()),
+                            Ok((_, grapheme)) => Some(grapheme.clone()),
                         },
                     };
                     self.incoming.reset_peek();

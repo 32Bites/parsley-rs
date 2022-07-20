@@ -142,7 +142,7 @@ mod tests {
             _: &[super::Token<Token>],
             incoming: &mut super::stream::Graphemes,
         ) -> Result<Token, LexError> {
-            if let Some((_, Ok(first_grapheme))) = incoming.peek() {
+            if let Some(Ok((_, first_grapheme))) = incoming.peek() {
                 if !first_grapheme.chars().fold(true, Whitespace::is) {
                     return Ok(Token::Whitespace);
                 }
@@ -152,7 +152,7 @@ mod tests {
                 match incoming.next() {
                     Some(Ok((_, grapheme))) if grapheme.chars().fold(true, Whitespace::is) => {
                         match incoming.peek() {
-                            Some((_, Ok(next_grapheme)))
+                            Some(Ok((_, next_grapheme)))
                                 if !next_grapheme.chars().fold(true, Whitespace::is) =>
                             {
                                 break
