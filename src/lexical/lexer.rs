@@ -7,16 +7,20 @@ use super::{error::LexError, stream::Graphemes, Token, TokenValue, Tokenizer};
 pub type TokenizerFn<TokenType> = fn() -> Box<dyn Tokenizer<TokenType>>;
 
 /// Accepts graphemes from an input reader, and lexes them into tokens.
-pub struct Lexer<TokenType: TokenValue> {
+pub struct Lexer<'a, TokenType: TokenValue> {
     tokens: Vec<Token<TokenType>>,
     creation_funcs: Vec<TokenizerFn<TokenType>>,
     eof_token: Option<TokenType>,
-    incoming: Graphemes,
+    incoming: Graphemes<'a>,
 }
 
-impl<TokenType: TokenValue> Lexer<TokenType> {
+impl<TokenType: TokenValue> Lexer<'_, TokenType> {
     /// Create a lexer.
-    pub fn new<Reader: Read + 'static>(reader: Reader, is_lossy: bool, eof_token: Option<TokenType>) -> Self {
+    pub fn new<Reader: Read + 'static>(
+        reader: Reader,
+        is_lossy: bool,
+        eof_token: Option<TokenType>,
+    ) -> Self {
         Self {
             tokens: vec![],
             creation_funcs: vec![],

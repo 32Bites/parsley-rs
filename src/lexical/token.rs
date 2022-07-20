@@ -1,6 +1,5 @@
 use std::{
     fmt::{Debug, Display},
-    io::Read,
     ops::{Deref, DerefMut, RangeInclusive},
 };
 

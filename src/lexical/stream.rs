@@ -106,8 +106,8 @@ impl GraphemeLocation {
 
 /// A wrapper struct to simplify the utilization of the enumerated multipeek grapheme iterator
 /// that is utilized for lexing.
-pub struct Graphemes {
-    iter: MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read>>>>,
+pub struct Graphemes<'a> {
+    iter: MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read + 'a>>>>,
     successful_reads: usize,
     failed_reads: usize,
     line: usize,
@@ -115,8 +115,8 @@ pub struct Graphemes {
     invalid_bytes: Rc<RefCell<usize>>,
 }
 
-impl Graphemes {
-    pub fn new<Reader: Read + 'static>(reader: Reader, is_lossy: bool) -> Self {
+impl<'a> Graphemes<'a> {
+    pub fn new<Reader: Read + 'a>(reader: Reader, is_lossy: bool) -> Self {
         let invalid_bytes = Rc::new(RefCell::new(0));
         Self {
             iter: unicode_reader::Graphemes::from(Chars::new(
@@ -149,11 +149,13 @@ impl Graphemes {
         self.iter.reset_peek()
     }
 
-    pub fn inner(&self) -> &MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read>>>> {
+    pub fn inner(&self) -> &MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read + 'a>>>> {
         &self.iter
     }
 
-    pub fn inner_mut(&mut self) -> &mut MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read>>>> {
+    pub fn inner_mut(
+        &mut self,
+    ) -> &mut MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read + 'a>>>> {
         &mut self.iter
     }
 
@@ -182,7 +184,7 @@ impl Graphemes {
     }
 }
 
-impl Iterator for Graphemes {
+impl Iterator for Graphemes<'_> {
     type Item = Result<(GraphemeLocation, String), (usize, Error)>;
 
     fn next(&mut self) -> Option<Self::Item> {
