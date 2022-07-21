@@ -72,7 +72,7 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
     }
 
     /// Tokenize tokens and store them in self.
-    pub fn tokenize(&mut self) -> Result<(), LexError> {
+    pub fn tokenize(&mut self) -> Result<(), LexError<'a>> {
         while let Some(result) = self.incoming.next() {
             match result {
                 Ok((location, grapheme)) => {

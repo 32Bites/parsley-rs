@@ -179,6 +179,6 @@ pub trait Tokenizer<'a, TokenType: TokenValue> {
     fn lex(
         &mut self,
         tokens: &[Token<TokenType>],
-        incoming: &mut Graphemes,
+        incoming: &mut Graphemes<'a>,
     ) -> Result<TokenType, LexError<'a>>;
 }
