@@ -77,11 +77,11 @@ mod tests {
             false
         }
 
-        fn lex(
+        fn lex<'b>(
             &mut self,
             _: &[super::Token<Token>],
             incoming_characters: &mut super::stream::Graphemes,
-        ) -> Result<Token, LexError> {
+        ) -> Result<Token, LexError<'b>> {
             if let Some('"') = self.internal_value.chars().last() {
                 return Ok(Token::double_quoted_string(""));
             }
@@ -137,11 +137,11 @@ mod tests {
             grapheme.chars().fold(true, Whitespace::is)
         }
 
-        fn lex(
+        fn lex<'b>(
             &mut self,
             _: &[super::Token<Token>],
             incoming: &mut super::stream::Graphemes,
-        ) -> Result<Token, LexError> {
+        ) -> Result<Token, LexError<'b>> {
             if let Some(Ok((_, first_grapheme))) = incoming.peek() {
                 if !first_grapheme.chars().fold(true, Whitespace::is) {
                     return Ok(Token::Whitespace);

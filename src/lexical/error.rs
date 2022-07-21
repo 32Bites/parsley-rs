@@ -2,30 +2,30 @@ use std::error::Error;
 
 #[derive(Debug)]
 /// Represents an error that occurs when lexing.
-pub enum LexError {
+pub enum LexError<'a> {
     /// An error that you can throw when a token requires that within it's lexical logic,
     /// the stream must not cease to return graphemes.
     UnexpectedEndOfStream,
     /// An error that simply holds a boxed error.
-    Other(Box<dyn Error>),
+    Other(Box<dyn Error + 'a>),
     /// Same as [Self::Other], except with an accompanying index
     /// representing the location of the failed grapheme.
-    OtherIndexed(usize, Box<dyn Error>),
+    OtherIndexed(usize, Box<dyn Error + 'a>),
 }
 
-impl LexError {
+impl<'a> LexError<'a> {
     /// Helper for creating a [LexError::Other].
-    pub fn other<T: Into<Box<dyn Error>>>(error: T) -> Self {
+    pub fn other<T: Into<Box<dyn Error + 'a>>>(error: T) -> Self {
         Self::Other(error.into())
     }
 
     /// Helper for creating a [LexError::OtherIndexed].
-    pub fn other_indexed<T: Into<Box<dyn Error>>>(index: usize, error: T) -> Self {
+    pub fn other_indexed<T: Into<Box<dyn Error + 'a>>>(index: usize, error: T) -> Self {
         Self::OtherIndexed(index, error.into())
     }
 }
 
-impl std::fmt::Display for LexError {
+impl std::fmt::Display for LexError<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LexError::UnexpectedEndOfStream => write!(
@@ -42,4 +42,4 @@ impl std::fmt::Display for LexError {
     }
 }
 
-impl Error for LexError {}
+impl Error for LexError<'_> {}

@@ -176,9 +176,9 @@ pub trait Tokenizer<TokenType: TokenValue> {
     /// This stream is a stream of Unicode graphemes, from an underlying UTF-8 stream.
     /// Meaning rather than relying on singular characters, which doesn't include items
     /// such as emojis.
-    fn lex(
+    fn lex<'a>(
         &mut self,
         tokens: &[Token<TokenType>],
         incoming: &mut Graphemes,
-    ) -> Result<TokenType, LexError>;
+    ) -> Result<TokenType, LexError<'a>>;
 }
