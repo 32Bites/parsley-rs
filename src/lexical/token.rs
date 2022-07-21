@@ -156,7 +156,7 @@ impl<TokenType: TokenValue> AsMut<RangeInclusive<usize>> for Token<TokenType> {
 }
 
 /// Represents a tokenizer.
-pub trait Tokenizer<'a, TokenType: TokenValue> {
+pub trait Tokenizer<TokenType: TokenValue> {
     /// Determines whether or not the given grapheme and potential next grapheme consitutes the start
     /// of a potentially valid token. If it is indeed valid and you require the current grapheme,
     /// store `grapheme` somewhere in your tokenizer. However do not store `next`, as it will be
@@ -176,8 +176,8 @@ pub trait Tokenizer<'a, TokenType: TokenValue> {
     /// This stream is a stream of Unicode graphemes, from an underlying UTF-8 stream.
     /// Meaning rather than relying on singular characters, which doesn't include items
     /// such as emojis.
-    fn lex<'b>(
-        &mut self,
+    fn lex<'a, 'b>(
+        &'b mut self,
         tokens: &'b [Token<TokenType>],
         incoming: &'b mut Graphemes<'a>,
     ) -> Result<TokenType, LexError<'a>>;

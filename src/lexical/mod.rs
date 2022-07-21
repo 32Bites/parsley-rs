@@ -61,7 +61,7 @@ mod tests {
         }
     }
 
-    impl<'a> Tokenizer<'a, Token> for DoubleQuotedStringLexer {
+    impl Tokenizer<Token> for DoubleQuotedStringLexer {
         fn can_tokenize(
             &mut self,
             _: &[super::Token<Token>],
@@ -77,18 +77,23 @@ mod tests {
             false
         }
 
-        fn lex(
-            &mut self,
-            _: &[super::Token<Token>],
-            incoming_characters: &mut super::stream::Graphemes,
+        fn lex<'a, 'b>(
+            &'b mut self,
+            _: &'b [super::Token<Token>],
+            incoming_characters: &'b mut super::stream::Graphemes<'a>,
         ) -> Result<Token, LexError<'a>> {
             if let Some('"') = self.internal_value.chars().last() {
                 return Ok(Token::double_quoted_string(""));
             }
+            match incoming_characters.peek() {
+                Some(Ok((_location, _grapheme))) => {},
+                Some(Err((_index, _error))) => {},
+                None => {},
+            }
             loop {
                 let mut character = match incoming_characters.next() {
                     Some(Ok((_location, grapheme))) => grapheme,
-                    Some(_) => unimplemented!(),
+                    Some(Err((index, error))) => return Err(LexError::other_indexed(index, error)),
                     None => return Err(LexError::UnexpectedEndOfStream),
                 };
 
@@ -126,7 +131,7 @@ mod tests {
         }
     }
 
-    impl<'a> Tokenizer<'a, Token> for Whitespace {
+    impl Tokenizer<Token> for Whitespace {
         fn can_tokenize(
             &mut self,
             _: &[super::Token<Token>],
@@ -137,10 +142,10 @@ mod tests {
             grapheme.chars().fold(true, Whitespace::is)
         }
 
-        fn lex(
-            &mut self,
-            _: &[super::Token<Token>],
-            incoming: &mut super::stream::Graphemes,
+        fn lex<'a, 'b>(
+            &'b mut self,
+            _: &'b [super::Token<Token>],
+            incoming: &'b mut super::stream::Graphemes<'a>,
         ) -> Result<Token, LexError<'a>> {
             if let Some(Ok((_, first_grapheme))) = incoming.peek() {
                 if !first_grapheme.chars().fold(true, Whitespace::is) {

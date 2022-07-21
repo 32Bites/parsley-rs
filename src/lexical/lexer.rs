@@ -5,11 +5,11 @@ use super::{error::LexError, stream::Graphemes, Token, TokenValue, Tokenizer};
 /// Represents a function that creates an empty token. This assumes that each token is represented by a single type,
 /// such as an enum, however for each enumeration that will be used in the lexer, there is a corresponding `TokenizerFn`.
 pub trait TokenizerFn<'a, TokenType: TokenValue>:
-    Fn() -> Box<dyn Tokenizer<'a, TokenType> + 'a> + 'a
+    Fn() -> Box<dyn Tokenizer<TokenType> + 'a> + 'a
 {
 }
 
-impl<'a, TokenType: TokenValue, T: Fn() -> Box<dyn Tokenizer<'a, TokenType> + 'a> + 'a>
+impl<'a, TokenType: TokenValue, T: Fn() -> Box<dyn Tokenizer<TokenType> + 'a> + 'a>
     TokenizerFn<'a, TokenType> for T
 {
 }
@@ -41,7 +41,7 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
     pub fn tokenizer<F, T>(mut self, f: F) -> Self
     where
         F: Fn() -> T + 'a,
-        T: Tokenizer<'a, TokenType> + 'a,
+        T: Tokenizer<TokenType> + 'a,
     {
         self.add_tokenizer(f);
         self
@@ -51,7 +51,7 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
     pub fn add_tokenizer<F, T>(&mut self, f: F)
     where
         F: Fn() -> T + 'a,
-        T: Tokenizer<'a, TokenType> + 'a,
+        T: Tokenizer<TokenType> + 'a,
     {
         self.creation_funcs.push(Box::new(move || Box::new(f())));
     }
