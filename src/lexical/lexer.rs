@@ -96,7 +96,7 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
                                 if tokenizer.can_tokenize(&self.tokens, &grapheme, &location, &next)
                                 {
                                     let start_index = self.incoming.current_index();
-                                    let token = tokenizer.lex(&self.tokens, &mut self.incoming);
+                                    let token = tokenizer.lex(&mut self.tokens, &mut self.incoming);
                                     self.incoming.reset_peek();
                                     found = true;
                                     return Some((start_index, token));

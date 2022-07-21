@@ -79,7 +79,7 @@ mod tests {
 
         fn lex<'a, 'b>(
             &'b mut self,
-            _: &'b [super::Token<Token>],
+            _: &'b mut Vec<super::Token<Token>>,
             incoming_characters: &'b mut super::stream::Graphemes<'a>,
         ) -> Result<Token, LexError<'a>> {
             if let Some('"') = self.internal_value.chars().last() {
@@ -144,7 +144,7 @@ mod tests {
 
         fn lex<'a, 'b>(
             &'b mut self,
-            _: &'b [super::Token<Token>],
+            _: &'b mut Vec<super::Token<Token>>,
             incoming: &'b mut super::stream::Graphemes<'a>,
         ) -> Result<Token, LexError<'a>> {
             if let Some(Ok((_, first_grapheme))) = incoming.peek() {

@@ -178,7 +178,7 @@ pub trait Tokenizer<TokenType: TokenValue> {
     /// such as emojis.
     fn lex<'a, 'b>(
         &'b mut self,
-        tokens: &'b [Token<TokenType>],
+        tokens: &'b mut Vec<Token<TokenType>>,
         incoming: &'b mut Graphemes<'a>,
     ) -> Result<TokenType, LexError<'a>>;
 }
