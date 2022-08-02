@@ -111,7 +111,7 @@ impl Sourceable for TcpStream {
 #[cfg(feature = "fs")]
 impl Sourceable for File {
     fn source_string(&self) -> String {
-        hack::source_string(self)
+        parsley_rs_hack::source_string(self)
     }
 }
 
