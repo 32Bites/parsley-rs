@@ -1,6 +1,6 @@
-use std::io::Read;
-
-use super::{error::LexError, stream::Graphemes, Token, TokenValue, Tokenizer};
+use super::{
+    error::LexError, stream::Graphemes, SourceableReader, Span, Token, TokenValue, Tokenizer,
+};
 
 /// Represents a function that creates an empty token. This assumes that each token is represented by a single type,
 /// such as an enum, however for each enumeration that will be used in the lexer, there is a corresponding `TokenizerFn`.
@@ -19,20 +19,21 @@ pub struct Lexer<'a, TokenType: TokenValue> {
     tokens: Vec<Token<TokenType>>,
     creation_funcs: Vec<Box<dyn TokenizerFn<'a, TokenType>>>,
     eof_token: Option<TokenType>,
-    incoming: Graphemes<'a>,
+    pub(crate) incoming: Graphemes<'a>,
 }
 
 impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
     /// Create a lexer.
-    pub fn new<Reader: Read + 'a>(
+    pub fn new<Reader: SourceableReader + 'a>(
         reader: Reader,
         is_lossy: bool,
+        store_bytes: bool,
         eof_token: Option<TokenType>,
     ) -> Self {
         Self {
             tokens: vec![],
             creation_funcs: vec![],
-            incoming: Graphemes::new(reader, is_lossy),
+            incoming: Graphemes::new(reader, is_lossy, !store_bytes),
             eof_token,
         }
     }
@@ -75,13 +76,10 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
     pub fn tokenize(&mut self) -> Result<(), LexError<'a>> {
         while let Some(result) = self.incoming.next() {
             match result {
-                Ok((location, grapheme)) => {
+                Ok((grapheme, location)) => {
                     let next = match self.incoming.peek() {
                         None => None,
-                        Some(result) => match result {
-                            Err(_) => None,
-                            Ok((_, grapheme)) => Some(grapheme.clone()),
-                        },
+                        Some((grapheme, _)) => Some(grapheme),
                     };
                     self.incoming.reset_peek();
 
@@ -95,11 +93,20 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
                                 let mut tokenizer = creation_func();
                                 if tokenizer.can_tokenize(&self.tokens, &grapheme, &location, &next)
                                 {
-                                    let start_index = self.incoming.current_index();
+                                    let start_index = location.index;
+                                    let start_byte = *location.byte_range.start();
+                                    let start_line = location.line;
+                                    let start_line_column = location.column;
                                     let token = tokenizer.lex(&mut self.tokens, &mut self.incoming);
                                     self.incoming.reset_peek();
                                     found = true;
-                                    return Some((start_index, token));
+                                    return Some((
+                                        start_index,
+                                        start_byte,
+                                        start_line,
+                                        start_line_column,
+                                        token,
+                                    ));
                                 }
                             }
 
@@ -107,14 +114,23 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
                         })
                         .last()
                     {
-                        Some((start_index, token)) => {
+                        Some((start_index, start_byte, start_line, start_line_offset, token)) => {
                             let token = token?;
                             if !token.should_skip() {
                                 let end_index = self.incoming.current_index();
-                                let bounded_token =
-                                    Token::new(token, Some(start_index..=end_index));
-
-                                self.tokens.push(bounded_token)
+                                let end_byte = self.incoming.current_byte_index();
+                                let end_line = self.incoming.current_line();
+                                let end_line_column = self.incoming.current_column();
+                                let span = Span::new(
+                                    &self.incoming.lines(),
+                                    start_index..=end_index,
+                                    start_byte..=end_byte,
+                                    start_line..=end_line,
+                                    start_line_offset..=end_line_column,
+                                    &self.incoming,
+                                );
+                                let token = Token::new(token, span);
+                                self.tokens.push(token)
                             }
                         }
                         None => {
@@ -125,7 +141,7 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
                         }
                     }
                 }
-                Err((index, error)) => return Err(LexError::other_indexed(index, error)),
+                Err(error) => return Err(error),
             }
         }
 
@@ -136,15 +152,31 @@ impl<'a, TokenType: TokenValue> Lexer<'a, TokenType> {
         Ok(())
     }
 
-    pub fn lines(&self) -> usize {
+    pub fn lines(&self) -> &[String] {
         self.incoming.lines()
     }
 
-    pub fn graphemes(&self) -> usize {
-        self.incoming.successes()
+    pub fn line_count(&self) -> usize {
+        self.incoming.lines().len()
     }
 
-    pub fn dropped_bytes(&mut self) -> usize {
+    pub fn graphemes(&self) -> usize {
+        self.incoming.grapheme_count()
+    }
+
+    pub fn invalid_bytes(&self) -> usize {
         self.incoming.invalid_bytes()
+    }
+
+    pub fn valid_bytes(&self) -> usize {
+        self.incoming.valid_bytes()
+    }
+
+    pub fn total_bytes(&self) -> usize {
+        self.invalid_bytes() + self.valid_bytes()
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.incoming.bytes()
     }
 }

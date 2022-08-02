@@ -1,16 +1,17 @@
 use std::{
     fmt::{Debug, Display},
-    ops::{Deref, DerefMut, RangeInclusive},
+    ops::{Deref, DerefMut},
 };
 
 use super::{
     error::LexError,
     stream::{GraphemeLocation, Graphemes},
+    Span,
 };
 
 /// Trait that dictates whether a type is considered a token.
 /// Used to avoid implementation conflicts.
-pub trait TokenValue: Debug + Clone {
+pub trait TokenValue: Debug + Clone + Display {
     /// Defines whether the lexer should avoid pushing the current token into the token
     /// list. This is useful for say whitespace.
     fn should_skip(&self) -> bool {
@@ -20,7 +21,7 @@ pub trait TokenValue: Debug + Clone {
 
 #[derive(Debug, Clone)]
 /// Represents a lexical token.
-/// It has an inclusive range dictating the grapheme indexes that the token was lexed from.
+/// It has a [super::Span] representing it's location in the stream.
 ///
 /// `TokenType` dictates the value of the token, and this is likely to be an enum provided by the developer.
 ///
@@ -28,15 +29,22 @@ pub trait TokenValue: Debug + Clone {
 ///
 /// It also implements [std::convert::AsRef] and [std::convert::AsMut] for `TokenType`, and [RangeInclusive<usize>].
 pub struct Token<TokenType: TokenValue> {
-    range: RangeInclusive<usize>,
-    // line: usize,
-    // offset: usize,
+    span: Span,
     value: TokenType,
 }
 
-impl<TokenType: TokenValue> Display for Token<TokenType> {
+impl<TokenType: TokenValue + Display> Display for Token<TokenType> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        writeln!(f, "Token {{")?;
+        writeln!(f, "\tSpan: {{")?;
+        writeln!(f, "\t{}", textwrap::indent(&self.span.to_string(), "\t"))?;
+        writeln!(f, "\t}};")?;
+        writeln!(
+            f,
+            "\tValue: {}",
+            textwrap::indent(&self.value.to_string(), "\t")
+        )?;
+        writeln!(f, "}};")
     }
 }
 
@@ -52,26 +60,16 @@ impl<TokenType: TokenValue> Token<TokenType> {
     /// `token` is a `TokenType` that will contain the actual value of the token.
     ///
     /// `range` is an [Option] for a [std::ops::RangeInclusive<usize>]. If `range` is `None`, then the internal range will be `0..=0`.
-    pub fn new(
-        token: TokenType,
-        range: Option<RangeInclusive<usize>>, /*, line: usize, offset: usize*/
-    ) -> Self {
-        let range = match range {
-            Some(range) => range,
-            None => 0..=0,
-        };
-
+    pub fn new(token: TokenType, span: Span) -> Self {
         Self {
-            range,
-            // line,
-            // offset,
+            span,
             value: token,
         }
     }
 
     /// Creates a token from a `TokenType` that has a range of `0..=0`, which is meaningless.
     pub fn from(token: TokenType) -> Self {
-        Self::new(token, None /*, 0, 0*/)
+        Self::new(token, Span::default())
     }
 
     /// Returns a reference to the token's value.
@@ -84,36 +82,14 @@ impl<TokenType: TokenValue> Token<TokenType> {
         &mut self.value
     }
 
-    /// Returns a reference to the range.
-    ///
-    /// If the range is `0..=0` the returned value will be `None`.
-    pub fn range(&self) -> Option<&RangeInclusive<usize>> {
-        if self.range == (0..=0) {
-            None
-        } else {
-            Some(&self.range)
-        }
+    /// Returns a reference to the token's [super::Span].
+    pub fn span(&self) -> &Span {
+        &self.span
     }
 
-    /// Returns a mutable reference to the range.
-    ///
-    /// If the range is `0..=0` the returned value will be `None`.
-    pub fn range_mut(&mut self) -> Option<&mut RangeInclusive<usize>> {
-        if self.range == (0..=0) {
-            None
-        } else {
-            Some(&mut self.range)
-        }
-    }
-
-    /// Returns a reference to the range, without checking if it's equal to `0..=0`.
-    pub fn range_raw(&self) -> &RangeInclusive<usize> {
-        &self.range
-    }
-
-    /// Returns a mutable reference to the range, without checking if it's equal to `0..=0`.
-    pub fn range_raw_mut(&mut self) -> &mut RangeInclusive<usize> {
-        &mut self.range
+    /// Returns a mutable reference to the token's [super::Span].
+    pub fn span_mut(&mut self) -> &mut Span {
+        &mut self.span
     }
 }
 
@@ -143,15 +119,15 @@ impl<TokenType: TokenValue> AsMut<TokenType> for Token<TokenType> {
     }
 }
 
-impl<TokenType: TokenValue> AsRef<RangeInclusive<usize>> for Token<TokenType> {
-    fn as_ref(&self) -> &RangeInclusive<usize> {
-        &self.range
+impl<TokenType: TokenValue> AsRef<Span> for Token<TokenType> {
+    fn as_ref(&self) -> &Span {
+        &self.span
     }
 }
 
-impl<TokenType: TokenValue> AsMut<RangeInclusive<usize>> for Token<TokenType> {
-    fn as_mut(&mut self) -> &mut RangeInclusive<usize> {
-        &mut self.range
+impl<TokenType: TokenValue> AsMut<Span> for Token<TokenType> {
+    fn as_mut(&mut self) -> &mut Span {
+        &mut self.span
     }
 }
 

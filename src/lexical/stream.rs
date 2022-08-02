@@ -1,217 +1,434 @@
 use std::{
-    cell::RefCell,
-    io::{Error, ErrorKind, Read, Result as IoResult},
-    rc::Rc,
+    collections::VecDeque,
+    io::Read,
+    mem,
+    ops::{Bound, RangeBounds, RangeInclusive},
 };
 
 use character_stream::{CharacterIterator, CharacterStream, CharacterStreamError};
-use itertools::{Itertools, MultiPeek};
+use unicode_segmentation::UnicodeSegmentation;
 
-/// Wrapper for [character_stream::CharacterIterator] that ensures compatibility with [unicode_reader::Graphemes].
-pub struct Chars<Reader: Read> {
-    incoming: CharacterIterator<Reader>,
-    is_lossy: bool,
-    failed_count: Option<Rc<RefCell<usize>>>,
-}
+use super::{error::LexError, SourceableReader};
 
-impl<Reader: Read> Chars<Reader> {
-    /// Create a [Chars] from `reader`.
-    /// `is_lossy` determines whether the stream will replace invalid UTF-8 byte sequences with a U+FFFD.
-    ///
-    /// If `is_lossy` is false, then [Chars::next] will return an Error containing a [character_stream::CharacterStreamError], which
-    /// provides the bytes that failed to be recognized as valid UTF-8, in addition to the error that resulted from the failed parsing.
-    pub fn new(reader: Reader, is_lossy: bool, failed_count: Option<Rc<RefCell<usize>>>) -> Self {
-        Self {
-            incoming: CharacterIterator::new(CharacterStream::new(reader, false)),
-            failed_count,
-            is_lossy,
+#[derive(Debug)]
+pub struct Blackhole(Vec<u8>, bool, usize);
+
+impl Blackhole {
+    pub fn new(void: bool) -> Self {
+        Self(vec![], void, 0)
+    }
+
+    pub fn len(&self) -> usize {
+        if self.1 {
+            self.2
+        } else {
+            self.0.len()
         }
     }
 
-    /// Returns the amount of invalid UTF-8 bytes.
-    pub fn invalid(&self) -> usize {
-        self.failed_count.as_ref().map_or(0, |c| *c.borrow())
+    pub fn bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn extend(&mut self, i: impl IntoIterator<Item = u8>) {
+        if self.1 {
+            self.2 += i.into_iter().count();
+        } else {
+            self.0.extend(i)
+        }
     }
 }
 
+pub struct Chars<Reader: Read> {
+    pub(crate) incoming: CharacterIterator<Reader>,
+    is_lossy: bool,
+    failed_count: usize,
+    success_count: usize,
+    accumulator: Blackhole,
+}
+
+impl<D: std::fmt::Debug + Read> std::fmt::Debug for Chars<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Chars")
+            .field("incoming", &self.incoming)
+            .field("is_lossy", &self.is_lossy)
+            .field("failed_count", &self.failed_count)
+            .field("success_count", &self.success_count)
+            .field("accumulator", &self.accumulator)
+            .finish()
+    }
+}
+
+impl<Reader: Read> Chars<Reader> {
+    pub fn new(incoming: Reader, is_lossy: bool, void: bool) -> Self {
+        Self {
+            incoming: CharacterIterator::new(CharacterStream::new(incoming, false)),
+            is_lossy,
+            failed_count: 0,
+            success_count: 0,
+            accumulator: Blackhole::new(void),
+        }
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.accumulator.bytes()
+    }
+
+    pub fn byte_count(&self) -> usize {
+        self.accumulator.len()
+    }
+
+    pub fn valid_bytes(&self) -> usize {
+        self.success_count
+    }
+
+    pub fn invalid_bytes(&self) -> usize {
+        self.failed_count
+    }
+}
+
+pub type CharsResult = Result<(char, RangeInclusive<usize>), CharacterStreamError>;
+pub type PeekedCharsResult<'a> = Result<(char, RangeInclusive<usize>), &'a CharacterStreamError>;
+
 impl<Reader: Read> Iterator for Chars<Reader> {
-    type Item = IoResult<char>;
+    type Item = CharsResult;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let start = self.accumulator.len();
         Some(match self.incoming.next()? {
-            Ok(character) => Ok(character),
+            Ok(character) => {
+                self.success_count += character.len_utf8();
+                self.accumulator.extend(character.to_string().bytes());
+                let end = self.accumulator.len().saturating_sub(1);
+                Ok((character, start..=end))
+            }
             Err(error) => {
-                let CharacterStreamError(bytes, boxed_error) = error;
-                if let Some(ref count) = self.failed_count {
-                    *count.borrow_mut() += bytes.len();
-                }
+                let CharacterStreamError(bytes, _) = &error;
+                self.failed_count += bytes.len();
+
                 if self.is_lossy {
-                    Ok('\u{FFFD}')
+                    let c = '\u{FFFD}';
+                    self.accumulator.extend(c.to_string().bytes());
+                    let end = self.accumulator.len().saturating_sub(1);
+                    Ok((c, start..=end))
                 } else {
-                    match boxed_error.downcast::<Error>() {
-                        Ok(error) => Err(*error),
-                        Err(error) => Err(Error::new(
-                            ErrorKind::Other,
-                            CharacterStreamError(bytes, error),
-                        )),
-                    }
+                    Err(error)
                 }
             }
         })
     }
 }
 
-impl<Reader: Read> From<CharacterIterator<Reader>> for Chars<Reader> {
-    fn from(iter: CharacterIterator<Reader>) -> Self {
-        let is_lossy = iter.is_lossy();
-        Self {
-            incoming: iter,
-            failed_count: None,
-            is_lossy,
-        }
+pub struct Clusters<Reader: Read> {
+    pub(crate) chars: Chars<Reader>,
+    buffer: String,
+    ranges: VecDeque<RangeInclusive<usize>>,
+    pending_error: Option<CharacterStreamError>,
+}
+
+impl<D: std::fmt::Debug + Read> std::fmt::Debug for Clusters<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Clusters")
+            .field("chars", &self.chars)
+            .field("buffer", &self.buffer)
+            .field("ranges", &self.ranges)
+            .field("pending_error", &self.pending_error)
+            .finish()
     }
 }
 
-impl<Reader: Read> From<CharacterStream<Reader>> for Chars<Reader> {
-    fn from(stream: CharacterStream<Reader>) -> Self {
-        let is_lossy = stream.is_lossy;
+impl<Reader: Read> Clusters<Reader> {
+    pub fn new(chars: Reader, is_lossy: bool, void: bool) -> Self {
         Self {
-            incoming: CharacterIterator::new(stream),
-            failed_count: None,
-            is_lossy,
+            chars: Chars::new(chars, is_lossy, void),
+            buffer: "".into(),
+            ranges: VecDeque::new(),
+            pending_error: None,
+        }
+    }
+
+    pub fn valid_bytes(&self) -> usize {
+        self.chars.valid_bytes()
+    }
+
+    pub fn invalid_bytes(&self) -> usize {
+        self.chars.invalid_bytes()
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.chars.bytes()
+    }
+
+    pub fn byte_count(&self) -> usize {
+        self.chars.byte_count()
+    }
+
+    fn combine_ranges(&mut self, range: impl RangeBounds<usize>) -> Option<RangeInclusive<usize>> {
+        let end = self.ranges.len().saturating_sub(1);
+        let valid_start = match range.start_bound() {
+            Bound::Included(i) => (*i < end),
+            Bound::Excluded(e) => (e - 1 < end),
+            Bound::Unbounded => true,
+        };
+        let valid_end = match range.end_bound() {
+            Bound::Included(i) => (*i <= end),
+            Bound::Excluded(e) => (e - 1 <= end),
+            Bound::Unbounded => true,
+        };
+
+        if !valid_start || !valid_end {
+            return None;
+        }
+
+        let ranges = self
+            .ranges
+            .drain(range)
+            .collect::<Vec<RangeInclusive<usize>>>();
+
+        let first = ranges.first()?;
+        let last = ranges.last()?;
+
+        Some((*first.start())..=(*last.end()))
+    }
+}
+
+impl<Reader: Read> Iterator for Clusters<Reader> {
+    type Item = Result<(String, RangeInclusive<usize>), CharacterStreamError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(error) = self.pending_error.take() {
+            return Some(Err(error));
+        }
+        loop {
+            match self.chars.next() {
+                Some(Ok((character, byte_range))) => {
+                    self.buffer.push(character);
+                    self.ranges.push_back(byte_range);
+                }
+                Some(Err(error)) => {
+                    if self.buffer.is_empty() {
+                        return Some(Err(error));
+                    } else {
+                        self.pending_error = Some(error);
+                        let range = self.combine_ranges(..).unwrap();
+                        return Some(Ok((mem::replace(&mut self.buffer, "".into()), range)));
+                    }
+                }
+                None => {
+                    if self.buffer.is_empty() {
+                        return None;
+                    } else {
+                        let range = self.combine_ranges(..).unwrap();
+                        return Some(Ok((mem::replace(&mut self.buffer, "".into()), range)));
+                    }
+                }
+            }
+
+            let mut gi = self.buffer.grapheme_indices(true).fuse();
+            if let (Some((_, first_grapheme)), Some((second_pos, _))) = (gi.next(), gi.next()) {
+                let grapheme = first_grapheme.to_owned();
+                self.buffer = unsafe { self.buffer.get_unchecked(second_pos..) }.to_owned();
+                let range = self
+                    .combine_ranges(..(self.ranges.len().saturating_sub(1)))
+                    .unwrap();
+                return Some(Ok((grapheme, range)));
+            }
         }
     }
 }
 
 #[derive(Clone, Debug)]
-/// Describes where a grapheme is from the start of the input.
 pub struct GraphemeLocation {
-    /// The index of the grapheme, barring invalid UTF-8 sequences.
     pub index: usize,
-    /// Which line the grapheme is on, starting at zero.
+    pub byte_range: RangeInclusive<usize>,
     pub line: usize,
-    /// The offset from the start of the line in which the grapheme lies.
-    pub offset: usize,
-}
-
-impl GraphemeLocation {
-    pub fn new(index: usize, line: usize, offset: usize) -> Self {
-        Self {
-            index,
-            line,
-            offset,
-        }
-    }
+    pub column: usize,
 }
 
 /// A wrapper struct to simplify the utilization of the enumerated multipeek grapheme iterator
 /// that is utilized for lexing.
+#[derive(Debug)]
 pub struct Graphemes<'a> {
-    iter: MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read + 'a>>>>,
-    successful_reads: usize,
-    failed_reads: usize,
-    line: usize,
-    line_offset: usize,
-    invalid_bytes: Rc<RefCell<usize>>,
+    pub(crate) iter: Clusters<Box<dyn SourceableReader + 'a>>,
+    count: usize,
+    column: usize,
+    lines: Vec<String>,
+    queue: VecDeque<Result<(String, RangeInclusive<usize>), CharacterStreamError>>,
+    peek_index: usize,
+    last_byte_index: usize,
 }
 
 impl<'a> Graphemes<'a> {
-    pub fn new<Reader: Read + 'a>(reader: Reader, is_lossy: bool) -> Self {
-        let invalid_bytes = Rc::new(RefCell::new(0));
+    pub fn new<Reader: SourceableReader + 'a>(reader: Reader, is_lossy: bool, void: bool) -> Self {
         Self {
-            iter: unicode_reader::Graphemes::from(Chars::new(
-                Box::new(reader) as Box<dyn Read>,
-                is_lossy,
-                Some(invalid_bytes.clone()),
-            ))
-            .multipeek(),
-            successful_reads: 0,
-            failed_reads: 0,
-            line: 0,
-            line_offset: 0,
-            invalid_bytes: invalid_bytes.clone(),
+            iter: Clusters::new(Box::new(reader), is_lossy, void),
+            count: 0,
+            column: 0,
+            lines: vec!["".into()],
+            queue: VecDeque::new(),
+            peek_index: 0,
+            last_byte_index: 0,
         }
     }
 
-    pub fn from<Reader: Read + 'static>(reader: Reader) -> Self {
-        Self::new(reader, true)
+    pub fn from<Reader: SourceableReader + 'a>(reader: Reader) -> Self {
+        Self::new(reader, true, true)
     }
 
-    pub fn peek<'b>(
-        &'b mut self,
-    ) -> Option<Result<(GraphemeLocation, &'b String), (usize, &'b Error)>> {
-        let index = self.current_index() + 1;
-        match self.iter.peek() {
-            Some(Ok(grapheme)) => {
-                let location = GraphemeLocation::new(index, self.line, self.line_offset);
-                Some(Ok((location, grapheme)))
-            }
-            Some(Err(error)) => Some(Err((index, error))),
-            None => None,
-        }
-    }
-
-    pub fn reset_peek(&mut self) {
-        self.iter.reset_peek()
-    }
-
-    pub fn inner(&self) -> &MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read + 'a>>>> {
+    pub fn inner(&self) -> &Clusters<Box<dyn SourceableReader + 'a>> {
         &self.iter
     }
 
-    pub fn inner_mut(
-        &mut self,
-    ) -> &mut MultiPeek<unicode_reader::Graphemes<Chars<Box<dyn Read + 'a>>>> {
+    pub fn inner_mut(&mut self) -> &mut Clusters<Box<dyn SourceableReader + 'a>> {
         &mut self.iter
     }
 
-    pub fn successes(&self) -> usize {
-        self.successful_reads
+    pub fn bytes(&self) -> &[u8] {
+        self.iter.bytes()
     }
 
-    pub fn failures(&self) -> usize {
-        self.failed_reads
+    pub fn byte_count(&self) -> usize {
+        self.iter.byte_count()
     }
 
-    pub fn attempts_total(&self) -> usize {
-        self.successful_reads + self.failed_reads
-    }
-
-    pub fn current_index(&self) -> usize {
-        self.successful_reads.saturating_sub(1)
-    }
-
-    pub fn lines(&self) -> usize {
-        self.line + 1
+    pub fn valid_bytes(&self) -> usize {
+        self.iter.valid_bytes()
     }
 
     pub fn invalid_bytes(&self) -> usize {
-        *self.invalid_bytes.borrow()
+        self.iter.invalid_bytes()
+    }
+
+    pub fn grapheme_count(&self) -> usize {
+        self.count
+    }
+
+    pub fn current_line(&self) -> usize {
+        self.lines.len().saturating_sub(1)
+    }
+
+    pub fn current_column(&self) -> usize {
+        self.column
+    }
+
+    pub fn current_index(&self) -> usize {
+        self.count.saturating_sub(1)
+    }
+
+    pub fn current_byte_index(&self) -> usize {
+        self.last_byte_index
+    }
+
+    pub fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    pub fn lines_mut(&mut self) -> &mut [String] {
+        &mut self.lines
+    }
+
+    pub fn peek(&mut self) -> Option<(String, GraphemeLocation)> {
+        let result = if self.peek_index < self.queue.len() {
+            &self.queue[self.peek_index]
+        } else {
+            match self.iter.next() {
+                Some(x) => {
+                    self.queue.push_back(x);
+                    &self.queue[self.peek_index]
+                }
+                None => return None,
+            }
+        };
+
+        let result: Option<(String, GraphemeLocation)> = match result {
+            Ok((grapheme, range)) => {
+                let (line, column) = match grapheme.as_str() {
+                    "\r\n" | "\n" => (self.lines.len(), 0),
+                    _ => (self.lines.len().saturating_sub(1), self.column + 1),
+                };
+
+                let location = GraphemeLocation {
+                    index: self.current_index(),
+                    byte_range: range.clone(),
+                    line,
+                    column,
+                };
+
+                self.peek_index += 1;
+
+                Some((grapheme.clone(), location))
+            }
+            Err(_) => None,
+        };
+
+        result
+    }
+
+    pub fn reset_peek(&mut self) {
+        self.peek_index = 0;
     }
 }
 
-impl Iterator for Graphemes<'_> {
-    type Item = Result<(GraphemeLocation, String), (usize, Error)>;
+impl<'a> Iterator for Graphemes<'a> {
+    type Item = Result<(String, GraphemeLocation), LexError<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.iter.next() {
-            Some(Ok(grapheme)) => {
-                if grapheme == "\n" {
-                    self.line += 1;
-                    self.line_offset = 0;
+        self.reset_peek();
+        match self.queue.pop_front().or_else(|| self.iter.next()) {
+            Some(Ok((grapheme, range))) => {
+                self.count += 1;
+                if matches!(grapheme.as_str(), "\r\n" | "\n") {
+                    self.column = 0;
+                    self.lines.push("".into())
                 } else {
-                    self.line_offset += 1;
+                    if let Some(last) = self.lines.last_mut() {
+                        if self.count != 1 {
+                            self.column += 1;
+                        }
+                        last.push_str(&grapheme);
+                    }
                 }
-                self.successful_reads += 1;
-                let location =
-                    GraphemeLocation::new(self.current_index(), self.line, self.line_offset);
-                Some(Ok((location, grapheme)))
+                self.last_byte_index = *range.end();
+
+                let location = GraphemeLocation {
+                    index: self.current_index(),
+                    byte_range: range,
+                    line: self.current_line(),
+                    column: self.current_column(),
+                };
+
+
+                Some(Ok((grapheme, location)))
             }
-            Some(Err(error)) => {
-                self.failed_reads += 1;
-                Some(Err((self.current_index() + 1, error)))
-            }
+            Some(Err(error)) => Some(Err(LexError::other(error))),
             None => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_graphemes() {
+        let input = "Hello, My name is \n \r\n \r\n\r \n\t\r\nNoah!";
+        let cursor = std::io::Cursor::new(input);
+
+        let mut graphemes = super::Graphemes::new(cursor, false, false);
+
+        loop {
+            match graphemes.peek() {
+                Some(p) => {
+                    println!("Peek: {:?}", p);
+                    let next = graphemes
+                        .next()
+                        .and_then(|s| s.ok())
+                        .map_or("None".to_string(), |s| format!("{s:?}"));
+                    println!("Next: {}", next);
+                }
+                None => {
+                    graphemes.reset_peek();
+                    break;
+                }
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "parsley-rs"
-version = "0.17.0"
+version = "0.18.0"
 edition = "2021"
 authors = ["Noah Shanaberger <noah@thenoah.party>"]
 description = "My attempt at a Rust parsing and lexing library."
@@ -12,7 +12,21 @@ keywords = ["lexer", "parser", "lexing", "parsing", "analysis"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# Comment
+
+[workspace]
+members = ["crates/*"]
+
+[features]
+net = []
+dns = ["net", "dep:dns-lookup"]
+fs = ["dep:hack"]
+buffer = []
+default = ["fs", "buffer", "net"]
+
 [dependencies]
-character-stream = "0.7.0"
-unicode_reader = "1.0.2"
-itertools = "0.10"
+unicode-segmentation = "1.9"
+character-stream = "0.8"
+textwrap = "0.15"
+hack = { path = "crates/hack", optional = true }
+dns-lookup = { version = "1.0.8", optional = true }

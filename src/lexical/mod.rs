@@ -1,10 +1,12 @@
 //mod lexer;
 //mod token;
 mod lexer;
+mod span;
 mod stream;
 mod token;
 
 pub use lexer::*;
+pub use span::*;
 pub use stream::*;
 pub use token::*;
 
@@ -22,12 +24,6 @@ mod tests {
         Eof,
         DoubleQuotedString(String),
         Whitespace,
-    }
-
-    impl Token {
-        fn double_quoted_string<S: AsRef<str>>(string: S) -> Self {
-            Token::DoubleQuotedString(string.as_ref().to_string())
-        }
     }
 
     impl super::TokenValue for Token {
@@ -82,18 +78,10 @@ mod tests {
             _: &'b mut Vec<super::Token<Token>>,
             incoming_characters: &'b mut super::stream::Graphemes<'a>,
         ) -> Result<Token, LexError<'a>> {
-            if let Some('"') = self.internal_value.chars().last() {
-                return Ok(Token::double_quoted_string(""));
-            }
-            match incoming_characters.peek() {
-                Some(Ok((_location, _grapheme))) => {},
-                Some(Err((_index, _error))) => {},
-                None => {},
-            }
             loop {
                 let mut character = match incoming_characters.next() {
-                    Some(Ok((_location, grapheme))) => grapheme,
-                    Some(Err((index, error))) => return Err(LexError::other_indexed(index, error)),
+                    Some(Ok((grapheme, _location))) => grapheme,
+                    Some(Err(error)) => return Err(LexError::other(error)),
                     None => return Err(LexError::UnexpectedEndOfStream),
                 };
 
@@ -147,46 +135,41 @@ mod tests {
             _: &'b mut Vec<super::Token<Token>>,
             incoming: &'b mut super::stream::Graphemes<'a>,
         ) -> Result<Token, LexError<'a>> {
-            if let Some(Ok((_, first_grapheme))) = incoming.peek() {
+            if let Some((first_grapheme, _)) = incoming.peek() {
                 if !first_grapheme.chars().fold(true, Whitespace::is) {
                     return Ok(Token::Whitespace);
                 }
-                incoming.next();
-            }
+                incoming.next()
+            } else {
+                return Ok(Token::Whitespace);
+            };
+
             loop {
-                match incoming.next() {
-                    Some(Ok((_, grapheme))) if grapheme.chars().fold(true, Whitespace::is) => {
-                        match incoming.peek() {
-                            Some(Ok((_, next_grapheme)))
-                                if !next_grapheme.chars().fold(true, Whitespace::is) =>
-                            {
-                                break
-                            }
-                            Some(_) => continue,
-                            None => break,
+                match incoming.peek().map(|r| r.clone()) {
+                    Some((grapheme, _)) => {
+                        if grapheme.chars().fold(true, Whitespace::is) {
+                            incoming.next();
+                        } else {
+                            break;
                         }
                     }
-                    Some(Ok((_, _))) => unreachable!(),
-                    Some(Err((index, error))) => return Err(LexError::other_indexed(index, error)),
                     None => break,
                 }
             }
-
             Ok(Token::Whitespace)
         }
     }
     #[test]
     fn test_lexer() {
-        let mut input = br#""BHi\t\""   
-        
-                        "PPPps\n\n""#
-            .to_vec();
-        for _ in 0..100 {
-            input.push(0xAD);
-        }
+        let input: Vec<u8> = "\"My name is\"\n \"Noah Scott\" \" HIIII\"\n  \"Shanaberger\""
+            .as_bytes()
+            .to_vec()
+            .into_iter()
+            .chain([0xADu8; 100])
+            .collect();
         let input = Cursor::new(input);
 
-        let mut lexer = Lexer::new(input, true, Some(Token::Eof))
+        let mut lexer = Lexer::new(input, true, true, Some(Token::Eof))
             .tokenizer(|| DoubleQuotedStringLexer::new())
             .tokenizer(|| Whitespace);
 
@@ -197,9 +180,62 @@ mod tests {
         println!("Displaying the lexed tokens:");
 
         for token in lexer.tokens() {
-            println!("{}", token)
+            println!("Next token:");
+            println!("{}", textwrap::indent(&format!("{}", token), "\t"));
+            if let Token::Eof = token.token() {
+                println!("\tString Value: None");
+                break;
+            }
+            println!(
+                "\tString Value: {:?}",
+                String::from_utf8_lossy(&lexer.bytes()[token.span().byte_range().clone().unwrap()])
+            );
         }
 
-        println!("Invalid byte count: {}", lexer.dropped_bytes());
+        println!("Invalid byte count: {}", lexer.invalid_bytes());
+        use super::span::Sourceable;
+        println!("Source: {}", lexer.source_string())
+    }
+
+    #[test]
+    fn test_spans() {
+        let input = "\"Hi My Name is Noah\"\n\n      \t\n\"My Name is Noah!\"";
+
+        let input = Cursor::new(input);
+
+        let mut lexer = Lexer::new(input, true, true, Some(Token::Eof))
+            .tokenizer(|| DoubleQuotedStringLexer::new())
+            .tokenizer(|| Whitespace);
+
+        if let Err(error) = lexer.tokenize() {
+            panic!("{}", error)
+        }
+
+        println!("Displaying the lexed tokens:");
+
+        let input = String::from_utf8(lexer.bytes().to_vec()).unwrap();
+
+        println!("Input Len: {};", input.len());
+
+        for token in lexer.tokens() {
+            println!("Token Value: {:?}", token.token());
+            println!("Token Range: {:?}", token.span().byte_range());
+            if let Token::Eof = token.token() {
+                break;
+            }
+            println!(
+                "Token Bytes (converted to string): {:?}",
+                String::from_utf8(
+                    (&input[token.span().byte_range().clone().unwrap()])
+                        .as_bytes()
+                        .to_vec()
+                )
+                .unwrap()
+            )
+        }
+
+        println!("Invalid byte count: {}", lexer.invalid_bytes());
+        use super::span::Sourceable;
+        println!("Source: {}", lexer.source_string())
     }
 }
