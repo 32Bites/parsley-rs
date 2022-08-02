@@ -11,3 +11,4 @@ For now, this README will be rather, devoid of content.
    1. Make the API less, messy.
    2. Rework spans more cleanly.
 3. Write proper documentation.
+4. Make the Lexer type an iterator when lexing, allowing for a stream of tokens from a stream of bytes.
