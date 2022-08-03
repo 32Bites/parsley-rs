@@ -64,7 +64,7 @@ impl<'a, TokenType: TokenValue + 'a> Sourceable<'a> for Lexer<'a, TokenType> {
 }
 
 #[cfg(feature = "buffer")]
-impl<B: AsRef<[u8]> + any::Any> Sourceable<'_> for Cursor<B> {
+impl<'a, B: AsRef<[u8]> + any::Any + 'a> Sourceable<'a> for Cursor<B> {
     fn source_string(&self) -> String {
         let any_bytes = self.get_ref() as &dyn any::Any;
 
