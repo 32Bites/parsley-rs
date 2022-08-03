@@ -1,6 +1,6 @@
 [package]
 name = "parsley-rs"
-version = "0.18.1"
+version = "0.19.0"
 edition = "2021"
 authors = ["Noah Shanaberger <noah@thenoah.party>"]
 description = "My attempt at a Rust parsing and lexing library."
@@ -26,7 +26,7 @@ default = ["fs", "buffer", "net"]
 
 [dependencies]
 unicode-segmentation = "1.9"
-character-stream = "0.8"
+character-stream = "0.9"
 textwrap = "0.15"
 parsley-rs-hack = { path = "crates/hack", version = "0.1.0", optional = true }
 dns-lookup = { version = "1.0.8", optional = true }

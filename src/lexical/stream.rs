@@ -1,6 +1,7 @@
 use std::{
     collections::VecDeque,
     io::Read,
+    iter::FusedIterator,
     mem,
     ops::{Bound, RangeBounds, RangeInclusive},
 };
@@ -39,24 +40,13 @@ impl Blackhole {
     }
 }
 
+#[derive(Debug)]
 pub struct Chars<Reader: Read> {
     pub(crate) incoming: CharacterIterator<Reader>,
     is_lossy: bool,
     failed_count: usize,
     success_count: usize,
     accumulator: Blackhole,
-}
-
-impl<D: std::fmt::Debug + Read> std::fmt::Debug for Chars<D> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Chars")
-            .field("incoming", &self.incoming)
-            .field("is_lossy", &self.is_lossy)
-            .field("failed_count", &self.failed_count)
-            .field("success_count", &self.success_count)
-            .field("accumulator", &self.accumulator)
-            .finish()
-    }
 }
 
 impl<Reader: Read> Chars<Reader> {
@@ -119,22 +109,14 @@ impl<Reader: Read> Iterator for Chars<Reader> {
     }
 }
 
+impl<Reader: Read> FusedIterator for Chars<Reader> {}
+
+#[derive(Debug)]
 pub struct Clusters<Reader: Read> {
     pub(crate) chars: Chars<Reader>,
     buffer: String,
     ranges: VecDeque<RangeInclusive<usize>>,
     pending_error: Option<CharacterStreamError>,
-}
-
-impl<D: std::fmt::Debug + Read> std::fmt::Debug for Clusters<D> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Clusters")
-            .field("chars", &self.chars)
-            .field("buffer", &self.buffer)
-            .field("ranges", &self.ranges)
-            .field("pending_error", &self.pending_error)
-            .finish()
-    }
 }
 
 impl<Reader: Read> Clusters<Reader> {
@@ -235,6 +217,8 @@ impl<Reader: Read> Iterator for Clusters<Reader> {
         }
     }
 }
+
+impl<Reader: Read> FusedIterator for Clusters<Reader> {}
 
 #[derive(Clone, Debug)]
 pub struct GraphemeLocation {
@@ -343,7 +327,10 @@ impl<'a> Graphemes<'a> {
             Ok((grapheme, range)) => {
                 let (line, column) = match grapheme.as_str() {
                     "\r\n" | "\n" => (self.lines.len(), 0),
-                    _ => (self.lines.len().saturating_sub(1), self.column + 1),
+                    _ => (
+                        self.lines.len().saturating_sub(1),
+                        if self.count == 0 { 0 } else { self.column + 1 },
+                    ),
                 };
 
                 let location = GraphemeLocation {
@@ -396,7 +383,6 @@ impl<'a> Iterator for Graphemes<'a> {
                     column: self.current_column(),
                 };
 
-
                 Some(Ok((grapheme, location)))
             }
             Some(Err(error)) => Some(Err(LexError::other(error))),
@@ -404,6 +390,8 @@ impl<'a> Iterator for Graphemes<'a> {
         }
     }
 }
+
+impl<'a> FusedIterator for Graphemes<'a> {}
 
 #[cfg(test)]
 mod tests {

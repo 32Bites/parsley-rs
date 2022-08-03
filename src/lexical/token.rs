@@ -61,10 +61,7 @@ impl<TokenType: TokenValue> Token<TokenType> {
     ///
     /// `range` is an [Option] for a [std::ops::RangeInclusive<usize>]. If `range` is `None`, then the internal range will be `0..=0`.
     pub fn new(token: TokenType, span: Span) -> Self {
-        Self {
-            span,
-            value: token,
-        }
+        Self { span, value: token }
     }
 
     /// Creates a token from a `TokenType` that has a range of `0..=0`, which is meaningless.

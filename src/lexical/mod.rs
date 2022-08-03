@@ -1,5 +1,3 @@
-//mod lexer;
-//mod token;
 mod lexer;
 mod span;
 mod stream;
@@ -165,7 +163,7 @@ mod tests {
             .as_bytes()
             .to_vec()
             .into_iter()
-            .chain([0xADu8; 100])
+            .chain([0xAD; 100])
             .collect();
         let input = Cursor::new(input);
 

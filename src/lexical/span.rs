@@ -10,10 +10,12 @@ use std::{
 
 use super::{Chars, Clusters, Graphemes, Lexer, TokenValue};
 
+/// Trait for representing a lexical source
 pub trait Sourceable {
     fn source_string(&self) -> String;
 }
 
+/// Trait for representing a reader that is sourceable.
 pub trait SourceableReader: Sourceable + Read + Debug {}
 
 impl<T: Read + Sourceable + Debug> SourceableReader for T {}
@@ -115,9 +117,12 @@ impl Sourceable for File {
     }
 }
 
+/// Trait for types that implement [Read], [Display] and [Debug].
 pub trait DisplayableReader: Read + Display + Debug {}
 impl<T: Read + Display + Debug> DisplayableReader for T {}
 
+/// Trait for types that implement [DisplayableReader] to wrap it in a type that
+/// implements [SourceableReader].
 pub trait ToSource: DisplayableReader + Sized {
     fn to_source(self) -> Source<Self>;
 }
@@ -128,9 +133,12 @@ impl<DR: DisplayableReader + Sized> ToSource for DR {
     }
 }
 
+/// Trait for types that implement [Read] and [Debug].
 pub trait DebugableReader: Read + Debug {}
 impl<T: Read + Debug> DebugableReader for T {}
 
+/// Trait for types that implement [DebugableReader] to wrap it in a type that
+/// implements [SourceableReader].
 pub trait ToDebugSource: DebugableReader + Sized {
     fn to_debug_source(self, pretty_print: bool) -> DebugSource<Self>;
     fn to_debug_source_pretty(self) -> DebugSource<Self>;
@@ -152,6 +160,7 @@ impl<DR: DebugableReader + Sized> ToDebugSource for DR {
 }
 
 #[derive(Debug)]
+/// Type that implements [Read] and [Sourceable] for its wrapped value that implements [DisplayableReader].
 pub struct Source<DR: DisplayableReader>(pub DR);
 
 impl<DR: DisplayableReader> Display for Source<DR> {
@@ -205,6 +214,7 @@ impl<DR: DisplayableReader> AsMut<DR> for Source<DR> {
 }
 
 #[derive(Debug)]
+/// Type that implements [Sourceable] and [Read] for a [DebugableReader] stored as a parameter.
 pub struct DebugSource<DR: DebugableReader>(pub DR, pub bool);
 
 impl<DR: DebugableReader> DebugSource<DR> {
@@ -263,6 +273,7 @@ impl<DR: DebugableReader> AsMut<DR> for DebugSource<DR> {
 }
 
 #[derive(Debug, Clone)]
+/// Type that represents where on a line a given item is located.
 pub struct Line {
     /// The line number, starting from zero.
     pub index: usize,
@@ -304,9 +315,13 @@ fn generate_lines(
 /// Represents where in the stream a token lies.
 #[derive(Debug, Default, Clone)]
 pub struct Span {
+    /// The lines the token lies on.
     pub lines: Vec<Line>,
+    /// The range of graphemes where the token is located.
     pub grapheme_range: Option<RangeInclusive<usize>>,
+    /// The range of bytes where the token is located.
     pub byte_range: Option<RangeInclusive<usize>>,
+    /// The source from which the token was read.
     pub source: String,
 }
 
