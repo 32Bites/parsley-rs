@@ -5,7 +5,7 @@ use std::{
     fs::File,
     io::{Cursor, Read},
     net::TcpStream,
-    ops::{Deref, DerefMut, RangeInclusive},
+    ops::{Deref, DerefMut, RangeInclusive}, marker::PhantomData,
 };
 
 use super::{Chars, Clusters, Graphemes, Lexer, TokenValue};
@@ -118,76 +118,76 @@ impl Sourceable for File {
 }
 
 /// Trait for types that implement [Read], [Display] and [Debug].
-pub trait DisplayableReader: Read + Display + Debug {}
-impl<T: Read + Display + Debug> DisplayableReader for T {}
+pub trait DisplayableReader<'a>: Read + Display + Debug + 'a {}
+impl<'a, T: Read + Display + Debug + 'a> DisplayableReader<'a> for T {}
 
 /// Trait for types that implement [DisplayableReader] to wrap it in a type that
 /// implements [SourceableReader].
-pub trait ToSource: DisplayableReader + Sized {
-    fn to_source(self) -> Source<Self>;
+pub trait ToSource<'a>: DisplayableReader<'a> + Sized {
+    fn to_source(self) -> Source<'a, Self>;
 }
 
-impl<DR: DisplayableReader + Sized> ToSource for DR {
-    fn to_source(self) -> Source<Self> {
+impl<'a, DR: DisplayableReader<'a> + Sized> ToSource<'a> for DR {
+    fn to_source(self) -> Source<'a, Self> {
         Source::from(self)
     }
 }
 
 /// Trait for types that implement [Read] and [Debug].
-pub trait DebugableReader: Read + Debug {}
-impl<T: Read + Debug> DebugableReader for T {}
+pub trait DebugableReader<'a>: Read + Debug + 'a {}
+impl<'a, T: Read + Debug + 'a> DebugableReader<'a> for T {}
 
 /// Trait for types that implement [DebugableReader] to wrap it in a type that
 /// implements [SourceableReader].
-pub trait ToDebugSource: DebugableReader + Sized {
-    fn to_debug_source(self, pretty_print: bool) -> DebugSource<Self>;
-    fn to_debug_source_pretty(self) -> DebugSource<Self>;
-    fn to_debug_source_unpretty(self) -> DebugSource<Self>;
+pub trait ToDebugSource<'a>: DebugableReader<'a> + Sized {
+    fn to_debug_source(self, pretty_print: bool) -> DebugSource<'a, Self>;
+    fn to_debug_source_pretty(self) -> DebugSource<'a, Self>;
+    fn to_debug_source_unpretty(self) -> DebugSource<'a, Self>;
 }
 
-impl<DR: DebugableReader + Sized> ToDebugSource for DR {
-    fn to_debug_source(self, pretty_print: bool) -> DebugSource<Self> {
+impl<'a, DR: DebugableReader<'a> + Sized> ToDebugSource<'a> for DR {
+    fn to_debug_source(self, pretty_print: bool) -> DebugSource<'a, Self> {
         DebugSource::from(self, pretty_print)
     }
 
-    fn to_debug_source_pretty(self) -> DebugSource<Self> {
+    fn to_debug_source_pretty(self) -> DebugSource<'a, Self> {
         DebugSource::pretty_from(self)
     }
 
-    fn to_debug_source_unpretty(self) -> DebugSource<Self> {
+    fn to_debug_source_unpretty(self) -> DebugSource<'a, Self> {
         DebugSource::unpretty_from(self)
     }
 }
 
 #[derive(Debug)]
 /// Type that implements [Read] and [Sourceable] for its wrapped value that implements [DisplayableReader].
-pub struct Source<DR: DisplayableReader>(pub DR);
+pub struct Source<'a, DR: DisplayableReader<'a>>(pub DR, PhantomData<&'a ()>);
 
-impl<DR: DisplayableReader> Display for Source<DR> {
+impl<'a, DR: DisplayableReader<'a>> Display for Source<'a, DR> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.source_string())
     }
 }
 
-impl<DR: DisplayableReader> Source<DR> {
+impl<'a, DR: DisplayableReader<'a>> Source<'a, DR> {
     pub fn from(reader: DR) -> Self {
-        Self(reader)
+        Self(reader, PhantomData)
     }
 }
 
-impl<DR: DisplayableReader> Sourceable for Source<DR> {
+impl<'a, DR: DisplayableReader<'a>> Sourceable for Source<'a, DR> {
     fn source_string(&self) -> String {
         self.0.to_string()
     }
 }
 
-impl<DR: DisplayableReader> Read for Source<DR> {
+impl<'a, DR: DisplayableReader<'a>> Read for Source<'a, DR> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.0.read(buf)
     }
 }
 
-impl<DR: DisplayableReader> Deref for Source<DR> {
+impl<'a, DR: DisplayableReader<'a>> Deref for Source<'a, DR> {
     type Target = DR;
 
     fn deref(&self) -> &Self::Target {
@@ -195,19 +195,19 @@ impl<DR: DisplayableReader> Deref for Source<DR> {
     }
 }
 
-impl<DR: DisplayableReader> DerefMut for Source<DR> {
+impl<'a, DR: DisplayableReader<'a>> DerefMut for Source<'a, DR> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<DR: DisplayableReader> AsRef<DR> for Source<DR> {
+impl<'a, DR: DisplayableReader<'a>> AsRef<DR> for Source<'a, DR> {
     fn as_ref(&self) -> &DR {
         &self.0
     }
 }
 
-impl<DR: DisplayableReader> AsMut<DR> for Source<DR> {
+impl<'a, DR: DisplayableReader<'a>> AsMut<DR> for Source<'a, DR> {
     fn as_mut(&mut self) -> &mut DR {
         &mut self.0
     }
@@ -215,11 +215,11 @@ impl<DR: DisplayableReader> AsMut<DR> for Source<DR> {
 
 #[derive(Debug)]
 /// Type that implements [Sourceable] and [Read] for a [DebugableReader] stored as a parameter.
-pub struct DebugSource<DR: DebugableReader>(pub DR, pub bool);
+pub struct DebugSource<'a, DR: DebugableReader<'a>>(pub DR, pub bool, PhantomData<&'a ()>);
 
-impl<DR: DebugableReader> DebugSource<DR> {
+impl<'a, DR: DebugableReader<'a>> DebugSource<'a, DR> {
     pub fn from(reader: DR, pretty_print: bool) -> Self {
-        Self(reader, pretty_print)
+        Self(reader, pretty_print, PhantomData)
     }
 
     pub fn pretty_from(reader: DR) -> Self {
@@ -231,13 +231,13 @@ impl<DR: DebugableReader> DebugSource<DR> {
     }
 }
 
-impl<DR: DebugableReader> Read for DebugSource<DR> {
+impl<'a, DR: DebugableReader<'a>> Read for DebugSource<'a, DR> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.0.read(buf)
     }
 }
 
-impl<DR: DebugableReader> Sourceable for DebugSource<DR> {
+impl<'a, DR: DebugableReader<'a>> Sourceable for DebugSource<'a, DR> {
     fn source_string(&self) -> String {
         match self.1 {
             true => format!("{:#?}", self.0),
@@ -246,7 +246,7 @@ impl<DR: DebugableReader> Sourceable for DebugSource<DR> {
     }
 }
 
-impl<DR: DebugableReader> Deref for DebugSource<DR> {
+impl<'a, DR: DebugableReader<'a>> Deref for DebugSource<'a, DR> {
     type Target = DR;
 
     fn deref(&self) -> &Self::Target {
@@ -254,19 +254,19 @@ impl<DR: DebugableReader> Deref for DebugSource<DR> {
     }
 }
 
-impl<DR: DebugableReader> DerefMut for DebugSource<DR> {
+impl<'a, DR: DebugableReader<'a>> DerefMut for DebugSource<'a, DR> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<DR: DebugableReader> AsRef<DR> for DebugSource<DR> {
+impl<'a, DR: DebugableReader<'a>> AsRef<DR> for DebugSource<'a, DR> {
     fn as_ref(&self) -> &DR {
         &self.0
     }
 }
 
-impl<DR: DebugableReader> AsMut<DR> for DebugSource<DR> {
+impl<'a, DR: DebugableReader<'a>> AsMut<DR> for DebugSource<'a, DR> {
     fn as_mut(&mut self) -> &mut DR {
         &mut self.0
     }
