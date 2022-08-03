@@ -12,59 +12,59 @@ use std::{
 use super::{Chars, Clusters, Graphemes, Lexer, TokenValue};
 
 /// Trait for representing a lexical source
-pub trait Sourceable<'a>: 'a {
+pub trait Sourceable {
     fn source_string(&self) -> String;
 }
 
 /// Trait for representing a reader that is sourceable.
-pub trait SourceableReader<'a>: Sourceable<'a> + Read + Debug + 'a {}
+pub trait SourceableReader<'a>: Sourceable + Read + Debug + 'a {}
 
-impl<'a, T: Read + Sourceable<'a> + Debug + 'a> SourceableReader<'a> for T {}
+impl<'a, T: Read + Sourceable + Debug + 'a> SourceableReader<'a> for T {}
 
-impl<'a, Reader: SourceableReader<'a>> Sourceable<'a> for CharacterStream<Reader> {
+impl<'a, Reader: SourceableReader<'a>> Sourceable for CharacterStream<Reader> {
     fn source_string(&self) -> String {
         self.as_ref().source_string()
     }
 }
 
-impl<'a, Reader: SourceableReader<'a>> Sourceable<'a> for CharacterIterator<Reader> {
+impl<'a, Reader: SourceableReader<'a>> Sourceable for CharacterIterator<Reader> {
     fn source_string(&self) -> String {
         self.stream().source_string()
     }
 }
 
-impl<'a, Reader: SourceableReader<'a>> Sourceable<'a> for Chars<Reader> {
+impl<'a, Reader: SourceableReader<'a>> Sourceable for Chars<Reader> {
     fn source_string(&self) -> String {
         self.incoming.source_string()
     }
 }
 
-impl<'a, R: AsRef<dyn SourceableReader<'a>> + 'a> Sourceable<'a> for R {
+impl<'a, R: AsRef<dyn SourceableReader<'a>> + 'a> Sourceable for R {
     fn source_string(&self) -> String {
         self.as_ref().source_string()
     }
 }
 
-impl<'a, Reader: SourceableReader<'a>> Sourceable<'a> for Clusters<Reader> {
+impl<'a, Reader: SourceableReader<'a>> Sourceable for Clusters<Reader> {
     fn source_string(&self) -> String {
         self.chars.source_string()
     }
 }
 
-impl<'a> Sourceable<'a> for Graphemes<'a> {
+impl Sourceable for Graphemes<'_> {
     fn source_string(&self) -> String {
         self.iter.source_string()
     }
 }
 
-impl<'a, TokenType: TokenValue + 'a> Sourceable<'a> for Lexer<'a, TokenType> {
+impl<'a, TokenType: TokenValue + 'a> Sourceable for Lexer<'a, TokenType> {
     fn source_string(&self) -> String {
         self.incoming.source_string()
     }
 }
 
 #[cfg(feature = "buffer")]
-impl<'a, B: AsRef<[u8]> + any::Any + 'a> Sourceable<'a> for Cursor<B> {
+impl<B: AsRef<[u8]> + any::Any> Sourceable for Cursor<B> {
     fn source_string(&self) -> String {
         let any_bytes = self.get_ref() as &dyn any::Any;
 
@@ -85,7 +85,7 @@ impl<'a, B: AsRef<[u8]> + any::Any + 'a> Sourceable<'a> for Cursor<B> {
 }
 
 #[cfg(feature = "net")]
-impl Sourceable<'_> for TcpStream {
+impl Sourceable for TcpStream {
     fn source_string(&self) -> String {
         match self.peer_addr() {
             Ok(addr) => {
@@ -112,7 +112,7 @@ impl Sourceable<'_> for TcpStream {
 }
 
 #[cfg(feature = "fs")]
-impl Sourceable<'_> for File {
+impl Sourceable for File {
     fn source_string(&self) -> String {
         parsley_rs_hack::source_string(self)
     }
@@ -176,7 +176,7 @@ impl<'a, DR: DisplayableReader<'a>> Source<'a, DR> {
     }
 }
 
-impl<'a, DR: DisplayableReader<'a>> Sourceable<'a> for Source<'a, DR> {
+impl<'a, DR: DisplayableReader<'a>> Sourceable for Source<'a, DR> {
     fn source_string(&self) -> String {
         self.0.to_string()
     }
@@ -238,7 +238,7 @@ impl<'a, DR: DebugableReader<'a>> Read for DebugSource<'a, DR> {
     }
 }
 
-impl<'a, DR: DebugableReader<'a>> Sourceable<'a> for DebugSource<'a, DR> {
+impl<'a, DR: DebugableReader<'a>> Sourceable for DebugSource<'a, DR> {
     fn source_string(&self) -> String {
         match self.1 {
             true => format!("{:#?}", self.0),
@@ -327,13 +327,13 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn new<'a>(
+    pub fn new(
         lines: &[String],
         grapheme_range: RangeInclusive<usize>,
         byte_range: RangeInclusive<usize>,
         line_range: RangeInclusive<usize>,
         column_range: RangeInclusive<usize>,
-        source: &impl Sourceable<'a>,
+        source: &impl Sourceable,
     ) -> Self {
         let lines = generate_lines(lines, line_range, column_range);
 
