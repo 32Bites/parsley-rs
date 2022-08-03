@@ -4,8 +4,9 @@ use std::{
     fmt::{Debug, Display},
     fs::File,
     io::{Cursor, Read},
+    marker::PhantomData,
     net::TcpStream,
-    ops::{Deref, DerefMut, RangeInclusive}, marker::PhantomData,
+    ops::{Deref, DerefMut, RangeInclusive},
 };
 
 use super::{Chars, Clusters, Graphemes, Lexer, TokenValue};
@@ -16,35 +17,35 @@ pub trait Sourceable {
 }
 
 /// Trait for representing a reader that is sourceable.
-pub trait SourceableReader: Sourceable + Read + Debug {}
+pub trait SourceableReader<'a>: Sourceable + Read + Debug + 'a {}
 
-impl<T: Read + Sourceable + Debug> SourceableReader for T {}
+impl<'a, T: Read + Sourceable + Debug + 'a> SourceableReader<'a> for T {}
 
-impl<Reader: SourceableReader> Sourceable for CharacterStream<Reader> {
+impl<'a, Reader: SourceableReader<'a>> Sourceable for CharacterStream<Reader> {
     fn source_string(&self) -> String {
         self.as_ref().source_string()
     }
 }
 
-impl<Reader: SourceableReader> Sourceable for CharacterIterator<Reader> {
+impl<'a, Reader: SourceableReader<'a>> Sourceable for CharacterIterator<Reader> {
     fn source_string(&self) -> String {
         self.stream().source_string()
     }
 }
 
-impl<Reader: SourceableReader> Sourceable for Chars<Reader> {
+impl<'a, Reader: SourceableReader<'a>> Sourceable for Chars<Reader> {
     fn source_string(&self) -> String {
         self.incoming.source_string()
     }
 }
 
-impl<'a, R: AsRef<dyn SourceableReader + 'a>> Sourceable for R {
+impl<'a, R: AsRef<dyn SourceableReader<'a> + 'a>> Sourceable for R {
     fn source_string(&self) -> String {
         self.as_ref().source_string()
     }
 }
 
-impl<Reader: SourceableReader> Sourceable for Clusters<Reader> {
+impl<'a, Reader: SourceableReader<'a>> Sourceable for Clusters<Reader> {
     fn source_string(&self) -> String {
         self.chars.source_string()
     }

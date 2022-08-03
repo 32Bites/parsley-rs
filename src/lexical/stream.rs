@@ -232,7 +232,7 @@ pub struct GraphemeLocation {
 /// that is utilized for lexing.
 #[derive(Debug)]
 pub struct Graphemes<'a> {
-    pub(crate) iter: Clusters<Box<dyn SourceableReader + 'a>>,
+    pub(crate) iter: Clusters<Box<dyn SourceableReader<'a> + 'a>>,
     count: usize,
     column: usize,
     lines: Vec<String>,
@@ -242,7 +242,11 @@ pub struct Graphemes<'a> {
 }
 
 impl<'a> Graphemes<'a> {
-    pub fn new<Reader: SourceableReader + 'a>(reader: Reader, is_lossy: bool, void: bool) -> Self {
+    pub fn new<Reader: SourceableReader<'a> + 'a>(
+        reader: Reader,
+        is_lossy: bool,
+        void: bool,
+    ) -> Self {
         Self {
             iter: Clusters::new(Box::new(reader), is_lossy, void),
             count: 0,
@@ -254,15 +258,15 @@ impl<'a> Graphemes<'a> {
         }
     }
 
-    pub fn from<Reader: SourceableReader + 'a>(reader: Reader) -> Self {
+    pub fn from<Reader: SourceableReader<'a> + 'a>(reader: Reader) -> Self {
         Self::new(reader, true, true)
     }
 
-    pub fn inner(&self) -> &Clusters<Box<dyn SourceableReader + 'a>> {
+    pub fn inner(&self) -> &Clusters<Box<dyn SourceableReader<'a> + 'a>> {
         &self.iter
     }
 
-    pub fn inner_mut(&mut self) -> &mut Clusters<Box<dyn SourceableReader + 'a>> {
+    pub fn inner_mut(&mut self) -> &mut Clusters<Box<dyn SourceableReader<'a> + 'a>> {
         &mut self.iter
     }
 

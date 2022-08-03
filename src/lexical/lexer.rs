@@ -24,7 +24,7 @@ pub struct Lexer<'a, TokenType: TokenValue> {
 
 impl<'a, TokenType: TokenValue + 'a> Lexer<'a, TokenType> {
     /// Create a lexer.
-    pub fn new<Reader: SourceableReader + 'a>(
+    pub fn new<Reader: SourceableReader<'a> + 'a>(
         reader: Reader,
         is_lossy: bool,
         store_bytes: bool,
